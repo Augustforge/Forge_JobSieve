@@ -8,7 +8,12 @@ def page(obj):
 
 
 def test_html_to_text_keeps_lines_and_unescapes():
-    assert html_to_text("<h2>Role</h2><ul><li>Python &amp; SQL</li><li>Remote</li></ul>") == "Role\nPython & SQL\nRemote"
+    assert html_to_text("<h2>Role</h2><ul><li>Python &amp; SQL</li><li>Remote</li></ul>") == "Role\n- Python & SQL\n- Remote"
+
+
+def test_list_items_stay_bullets_so_they_are_never_read_as_headings():
+    assert html_to_text("<p>Requirements</p><ul><li><p>Strong Python skills</p></li></ul>") == \
+        "Requirements\n- Strong Python skills"
 
 
 def test_parse_hh_style_posting():

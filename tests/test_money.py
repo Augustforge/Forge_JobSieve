@@ -22,6 +22,17 @@ def test_parse_salary_usd(text, expected):
     assert parse_salary_usd(text, RATES) == pytest.approx(expected)
 
 
+@pytest.mark.parametrize("text, expected", [
+    ("$120,000—$150,000 USD", 11250.0),  # US boards state a yearly salary without saying so
+    ("$35,3k- $52k", 3637.5),
+    ("$20,000 per month", 20000.0),  # a stated period wins
+    ("от 1 500 000 ₽ в месяц", 18750.0),
+    ("$9,000", 9000.0),
+])
+def test_a_figure_too_high_for_a_month_is_a_yearly_salary(text, expected):
+    assert parse_salary_usd(text, RATES) == pytest.approx(expected)
+
+
 @pytest.mark.parametrize("text", ["", "по результатам собеседования", "от 100 000", "1000 BTC"])
 def test_parse_salary_usd_none(text):
     assert parse_salary_usd(text, RATES) is None

@@ -1,4 +1,4 @@
-"""Command line: vm add | index-profile | rank | calibrate | label | eval | funnel."""
+"""Command line: vm fetch | add | index-profile | rank | calibrate | label | eval | funnel."""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .embed import DEFAULT_MODEL, EmbedderUnavailable, ensure_embeddings, get_embedder
 from .evaluate import evaluate, render_eval
+from .fetch import SOURCES, collect
 from .funnel import DEFAULT_WAIT, load_tracker, render_funnel
 from .labels import label_from_dict, load_label_file
 from .models import Vacancy, make_id, run_date
@@ -217,6 +218,21 @@ def cmd_eval(args) -> int:
     return 0
 
 
+def cmd_fetch(args) -> int:
+    records, errors = collect(args.sources, where=args.where, log=_err)
+    for e in errors:
+        _err(e)
+    lines = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
+    if not records:
+        _err("nothing collected")
+    elif args.out:
+        Path(args.out).write_text(lines, encoding="utf-8")
+        _err(f"wrote {len(records)} vacancies to {args.out}")
+    else:
+        sys.stdout.write(lines)
+    return 0 if records else 1
+
+
 def cmd_funnel(args) -> int:
     waits = {}
     for item in args.wait_channel:
@@ -293,6 +309,13 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--rules", default=os.environ.get("VM_RULES", ""))
     e.add_argument("--out", default="")
     e.set_defaults(func=cmd_eval)
+
+    fe = sub.add_parser("fetch", help="collect vacancies from public job APIs into JSONL for vm add")
+    fe.add_argument("sources", nargs="+", metavar="SOURCE",
+                    help=f"kind:argument, e.g. greenhouse:gitlab remotive:python; kinds: {', '.join(SOURCES)}")
+    fe.add_argument("--where", default="", help="keep jobs whose title, location or work format match this regex")
+    fe.add_argument("--out", default="", help="JSONL file; stdout when omitted")
+    fe.set_defaults(func=cmd_fetch)
 
     f = sub.add_parser("funnel", help="answers per week, channel and resume; whom to remind")
     f.add_argument("tracker", help="CSV: company, sent, status, channel, track, source, replied, updated, note")

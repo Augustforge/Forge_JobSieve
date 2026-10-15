@@ -8,12 +8,22 @@ import re
 _LD = re.compile(r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>", re.S | re.I)
 _TAG = re.compile(r"<[^>]+>")
 _BLOCK = re.compile(r"</?(?:p|li|ul|ol|br|h[1-6]|div|tr)\b[^>]*>", re.I)
+_LI = re.compile(r"<li\b[^>]*>", re.I)
+_ITEM = "\u2063"  # marks a list item until its first line of text is known: <li><p>text</p></li>
 
 
 def html_to_text(s: str) -> str:
-    s = html.unescape(_TAG.sub("", _BLOCK.sub("\n", s)))
-    lines = (re.sub(r"[ \t\u00a0\u202f]+", " ", line).strip() for line in s.splitlines())
-    return "\n".join(line for line in lines if line)
+    """Block tags become lines; list items keep a "- " so a short item is never mistaken for a heading."""
+    s = html.unescape(_TAG.sub("", _BLOCK.sub("\n", _LI.sub("\n" + _ITEM, s))))
+    out, item = [], False
+    for line in s.splitlines():
+        line = re.sub(r"[ \t\u00a0\u202f]+", " ", line).strip()
+        if line.startswith(_ITEM):
+            item, line = True, line.lstrip(_ITEM).strip()
+        if line:
+            out.append(f"- {line}" if item else line)
+            item = False
+    return "\n".join(out)
 
 
 def _objects(data):

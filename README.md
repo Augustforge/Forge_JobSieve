@@ -1,8 +1,8 @@
 # vacancy-match
 
-Rank job vacancies against your resumes, then apply your own terms — deal-breakers, wishes, salary floor, red
-lines — as a second, explained stage. Learn from every fit / no-fit decision, see what happens after you apply, and
-measure all of it on real decisions instead of eyeballing.
+Collect vacancies from public job APIs, rank them against your resumes, then apply your own terms — deal-breakers,
+wishes, salary floor, red lines — as a second, explained stage. Learn from every fit / no-fit decision, see what
+happens after you apply, and measure all of it on real decisions instead of eyeballing.
 
 ```
 ## 4. Python Developer (client-facing) — CallStack
@@ -94,8 +94,9 @@ any rule can set its own, e.g. `office: {patterns: ["office"], factor: 0.7}`.
 - **Salary:** a range counts at its middle (1000–1400 → 1200). Part-time is read from the title, the work format
   and the salary line — a body says "this is not part-time" as often as "part-time". Its pay is scaled to full time
   when the hours are stated anywhere (20 h/week at $900 ≈ $1660 full time); without hours it is only flagged. Hourly
-  pay counts 160 hours a month. Pay per project is flagged, not judged against a monthly floor. An unknown salary,
-  or a currency missing from `rates:`, is flagged (`no_salary`), never penalised: ask.
+  pay counts 160 hours a month. A figure with no period that would be over $15,000 a month is read as a yearly salary:
+  US and EU boards rarely write "per year". Pay per project is flagged, not judged against a monthly floor. An
+  unknown salary, or a currency missing from `rates:`, is flagged (`no_salary`), never penalised: ask.
 - **Tuning:** the factors are starting guesses. `vm eval` reports how often each rule fired on vacancies you took and
   on ones you rejected; a penalty that hits as many fits as no-fits is too strict.
 
@@ -121,15 +122,16 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
    (`resume-backend-EN.md`, `resume-data-RU.md`). `##` sections and `**bold**` project lines become chunks.
 2. **Your terms (optional).** Copy `examples/rules.example.yaml` and write your own salary curve, conditions, wishes
    and red lines. Skip it and the ranking is resume fit alone.
-3. **Vacancies.** JSONL with `source`, `url`, `title` and ideally `company`, `text`, `salary_text`, `published_at`,
-   `work_format` (full-time, part-time, project) and `location`.
-   One run per file; the run id must contain a date (`2026-10-14`, `links-2026-10-14`) — runs are replayed in date
-   order. Pages that embed schema.org `JobPosting` can be parsed with `vacancy_match.jobposting.parse_jobposting`.
+3. **Vacancies.** `vm fetch` collects them from the boards' own public APIs — no scraping, no login — into JSONL,
+   one run per file (see the table below). Any other source works too: JSONL with `source`, `url`, `title` and
+   ideally `company`, `text`, `salary_text`, `published_at`, `work_format` (full-time, part-time, project) and
+   `location`. The run id must contain a date (`2026-10-14`, `links-2026-10-14`): runs are replayed in date order.
 4. **Run it:**
 
 ```bash
 export VM_DB=my.db VM_RULES=my-rules.yaml          # or pass --db / --rules
 uv run vm index-profile path/to/resumes
+uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
 uv run vm add run.jsonl --run 2026-10-14
 uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
 uv run vm rank --run 2026-10-14 --out top.md
@@ -137,6 +139,25 @@ uv run vm label <url> fit --actor human --track backend          # every decisio
 uv run vm label <url> no_fit --actor human --reasons onsite,low_pay   # reasons are your own words
 uv run vm eval --rules my-rules.yaml               # after a few runs with real rejections
 ```
+
+### Where `vm fetch` collects from
+
+| source | what | argument |
+|---|---|---|
+| `greenhouse:<board>` | one company's open jobs on Greenhouse | the name in `job-boards.greenhouse.io/<board>` |
+| `lever:<company>` | one company's open jobs on Lever | the name in `jobs.lever.co/<company>` |
+| `ashby:<org>` | one company's open jobs on Ashby | the name in `jobs.ashbyhq.com/<org>` |
+| `remotive:<search>` | remote jobs, Remotive | a search, e.g. `python` |
+| `remoteok[:<tag>]` | remote jobs, Remote OK | optional tag, e.g. `python` |
+| `himalayas:<search>` | remote jobs, Himalayas | a search |
+| `arbeitnow` | jobs in Germany and remote, Arbeitnow | — |
+| `hh:<search>` | HeadHunter (hh.ru, hh.kz, …) | needs `HH_TOKEN`: since 2026 the hh API answers only registered apps ([dev.hh.ru](https://dev.hh.ru)) |
+| `page:<url>` | one vacancy page you found yourself | any page with schema.org `JobPosting` markup — hh vacancy pages have it, no token needed |
+
+`--where REGEX` keeps jobs whose title, location or work format match (`--where remote`). A source that fails
+(a typo in a board name, no network) is reported and the others are still collected. Every record keeps the job's
+own URL and its source: the aggregators ask you to link back and credit them if you republish their jobs, and
+Remotive asks for no more than a few requests a day.
 
 ## After you apply: the funnel
 

@@ -14,6 +14,8 @@ _CURRENCIES = [
 ]
 _HOURLY = re.compile(r"в час|per hour|hourly|/\s*h(?:ou)?r\b", re.I)
 _YEARLY = re.compile(r"в год|per year|annual|/\s*y(?:ea)?r\b", re.I)
+_MONTHLY = re.compile(r"в месяц|за месяц|/\s*мес|per month|a month|monthly|/\s*mo\b", re.I)
+YEARLY_ABOVE = 15000  # USD: with no period stated, a "monthly" figure above this is a yearly salary (US/EU boards)
 _BONUS = re.compile(r"\+|преми|бонус|\bkpi\b|bonus|комисси|commission", re.I)
 FULL_TIME_HOURS = 160
 WEEKS_PER_MONTH = 4.33
@@ -64,5 +66,7 @@ def parse_salary_usd(text: str, rates: dict[str, float]) -> float | None:
     if _HOURLY.search(text):
         monthly *= FULL_TIME_HOURS
     elif _YEARLY.search(text):
+        monthly /= 12
+    elif not _MONTHLY.search(text) and monthly * rates[currency] > YEARLY_ABOVE:
         monthly /= 12
     return round(monthly * rates[currency], 2)
