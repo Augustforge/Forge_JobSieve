@@ -1,0 +1,22 @@
+# Stage 2 — the candidate's own terms. Without this file the ranking is resume fit alone.
+# A fictional candidate: backend developer and designer, works remotely, does not speak German,
+# wants $1500 a month and will not go below $1100.
+# Every effect multiplies the calibrated fit (0-100). The factors are starting guesses: tune them with the
+# rule report of `vm eval` (a rule that mostly hits vacancies you took is too strict).
+levels: {slight: 0.9, serious: 0.5, boost: 1.1}
+flags:          # shown, never change the score
+  agency: ["outstaff|staffing agency"]
+wishes:         # nice to have: x slight
+  on_call: ["on-?call", "24/7 support"]
+conditions:     # deal-breakers a regex may still misread: x serious
+  language: ["fluent german", "german \\(?c1", "native german"]
+  onsite: ["on-?site only", "office[- ]based", "relocation required"]
+  clearance: ["security clearance"]
+boosts:         # what the candidate wants most: x boost
+  open_source: ["open[- ]source"]
+red_lines:      # cut: shown at the bottom with the reason
+  upfront_fee: ["pay (for|a) (training|starter kit|registration)", "registration fee"]
+stale: {days: 30, factor: 0.8}
+salary:         # monthly USD; a range counts at its middle; below the lowest point the vacancy is cut
+  curve: {1500: 1.0, 1350: 0.9, 1200: 0.65, 1100: 0.5}
+  rates: {USD: 1.0, EUR: 1.08, GBP: 1.27}

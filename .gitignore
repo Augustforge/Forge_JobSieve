@@ -1,0 +1,14 @@
+__pycache__/
+.venv/
+*.db
+*.sqlite
+*.jsonl
+!examples/*.jsonl
+data/
+runs/
+.pytest_cache/
+dist/
+*.csv
+!examples/*.csv
+top.md
+funnel.md

@@ -1,0 +1,10 @@
+company,sent,status,channel,track,source,replied,updated,note
+Northwind Apps,2026-09-28,interview,email,A-backend,jobs.example.com,2026-09-30,2026-10-09,second call on Friday
+Blue Pixel,2026-09-29,rejected,form,B-design,jobs.example.com,2026-10-06,,
+Metricly,2026-10-01,sent,board,A-backend,boards.example.org,,,
+Studio North,2026-10-02,replied,email,B-design,referral,2026-10-07,,asked for two more case studies
+OpsFlow,2026-10-05,sent,email,A-backend,jobs.example.com,,2026-10-12,reminder sent
+Chatly,2026-10-06,sent,form,A-backend,boards.example.org,,,
+Lumen Data,2026-10-08,sent,email,A-backend,referral,,,
+Pine Studio,2026-10-12,sent,board,B-design,boards.example.org,,,
+Harbor Labs,,draft,email,A-backend,jobs.example.com,,,text ready

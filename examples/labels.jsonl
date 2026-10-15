@@ -1,0 +1,14 @@
+{"url": "https://jobs.example.com/1", "label": "fit", "track": "A-backend", "actor": "human"}
+{"url": "https://jobs.example.com/2", "label": "fit", "track": "A-backend", "actor": "agent"}
+{"url": "https://jobs.example.com/3", "label": "fit", "track": "B-design", "actor": "human"}
+{"url": "https://jobs.example.com/4", "label": "no_fit", "track": "", "actor": "agent"}
+{"url": "https://jobs.example.com/5", "label": "no_fit", "track": "", "actor": "human"}
+{"url": "https://jobs.example.com/6", "label": "no_fit", "track": "", "actor": "agent"}
+{"url": "https://jobs.example.com/7", "label": "fit", "track": "A-backend", "actor": "human"}
+{"url": "https://jobs.example.com/8", "label": "fit", "track": "B-design", "actor": "agent"}
+{"url": "https://jobs.example.com/9", "label": "fit", "track": "A-backend", "actor": "human"}
+{"url": "https://jobs.example.com/10", "label": "no_fit", "track": "", "actor": "agent"}
+{"url": "https://jobs.example.com/11", "label": "no_fit", "track": "", "actor": "human"}
+{"url": "https://jobs.example.com/12", "label": "no_fit", "track": "", "actor": "agent"}
+{"url": "https://jobs.example.com/13", "label": "no_fit", "track": "", "actor": "human"}
+{"url": "https://jobs.example.com/14", "label": "no_fit", "track": "", "actor": "agent"}
