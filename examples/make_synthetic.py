@@ -34,6 +34,7 @@ def main() -> None:
                                        "actor": "human" if n % 2 else "agent"}))
     (here / "vacancies.jsonl").write_text("\n".join(vac_lines) + "\n", encoding="utf-8")
     (here / "labels.jsonl").write_text("\n".join(label_lines) + "\n", encoding="utf-8")
+    print(f"wrote {len(vac_lines)} vacancies to examples/vacancies.jsonl and their labels to examples/labels.jsonl")
 
 
 if __name__ == "__main__":

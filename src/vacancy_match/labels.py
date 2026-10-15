@@ -14,7 +14,7 @@ def label_from_dict(d: dict) -> Label:
     reasons = d.get("reasons") or ()
     if isinstance(reasons, str):
         reasons = [r.strip() for r in reasons.split(",") if r.strip()]
-    return Label(vacancy_id=vacancy_id, label=d.get("label", ""), actor=d.get("actor", "agent"),
+    return Label(vacancy_id=vacancy_id, label=d.get("label", ""), actor=d.get("actor", "human"),
                  track=d.get("track", ""), reasons=tuple(reasons), note=d.get("note", ""))
 
 

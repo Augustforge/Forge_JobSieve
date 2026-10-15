@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import sys
 
 import numpy as np
+
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # Windows without developer mode: harmless, noisy
 
 DEFAULT_MODEL = "intfloat/multilingual-e5-base"
 _TOKEN = re.compile(r"\w+", re.U)
@@ -48,7 +52,11 @@ class SentenceTransformerEmbedder:
         except ImportError as e:
             raise EmbedderUnavailable("sentence-transformers is not installed: run `uv sync --extra model`") from e
         try:
-            self._model = SentenceTransformer(model_name)
+            try:  # cached: no network round trips and no hub warnings on every command
+                self._model = SentenceTransformer(model_name, local_files_only=True)
+            except Exception:
+                print(f"downloading {model_name} once (0.5-1 GB); later runs read it from the cache", file=sys.stderr)
+                self._model = SentenceTransformer(model_name)
         except Exception as e:  # network, disk, broken cache
             raise EmbedderUnavailable(
                 f"could not load {model_name}: {e}. Download it once with network access, or point HF_HOME "

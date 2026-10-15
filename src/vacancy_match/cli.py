@@ -80,20 +80,28 @@ def cmd_calibrate(args) -> int:
 
 def cmd_add(args) -> int:
     store = Store(args.db)
-    vacancies = []
-    for n, line in enumerate(Path(args.file).read_text(encoding="utf-8-sig").splitlines(), 1):
+    vacancies, undated = [], 0
+    # split on \n only: str.splitlines() also breaks on U+2028 and U+0085, which JSON keeps inside strings
+    for n, line in enumerate(Path(args.file).read_text(encoding="utf-8-sig").split("\n"), 1):
         if not line.strip():
             continue
         try:
-            v = Vacancy.from_dict(json.loads(line), run_id=args.run or "")
-        except ValueError as e:
+            record = json.loads(line)
+            if args.run:
+                record["run_id"] = args.run  # --run wins over the run a record was fetched with
+            v = Vacancy.from_dict(record)
+        except (ValueError, AttributeError) as e:
             _err(f"skip line {n}: {e}")
             continue
         if not run_date(v.run_id):
-            _err(f"skip line {n}: run id {v.run_id!r} has no date — runs are ordered by date, use e.g. 2026-10-14 "
-                 f"or links-2026-10-14 (pass --run or set run_id in the record)")
+            undated += 1
             continue
         vacancies.append(v)
+    if undated:
+        _err(f"skipped: {undated} records have no dated run id — runs are ordered by date: pass --run 2026-10-14 "
+             f"(or links-2026-10-14), or set run_id in the records")
+    if not vacancies:
+        return 1
     res = store.add_vacancies(vacancies)
     print(f"added {res.new} new, {res.known} already known")
     try:
@@ -107,17 +115,25 @@ def cmd_add(args) -> int:
 
 def cmd_index_profile(args) -> int:
     store = Store(args.db)
-    chunks = load_profile(_paths(args.paths), exclude={t for t in args.exclude.split(",") if t})
+    notes: list[str] = []
+    chunks = load_profile(_paths(args.paths), exclude={t for t in args.exclude.split(",") if t}, notes=notes)
+    for note in notes:
+        _err(f"note: {note}")
     if not chunks:
         _err("no resume chunks found")
         return 1
+    dropped = sorted({c.track for c in store.profile_chunks()} - {c.track for c in chunks})
+    if dropped:
+        _err(f"note: the profile is replaced as a whole; no longer indexed: {', '.join(dropped)}. "
+             f"Index every resume together, e.g. `vm index-profile path/to/resumes/`")
     store.replace_profile(chunks)
     try:
         ensure_embeddings(store, get_embedder(args.model), "profile_chunk", {c.id: c.text for c in chunks}, "passage")
     except EmbedderUnavailable as e:
         _err(f"warning: embeddings skipped ({e}); `vm rank` computes them later")
     tracks = sorted({c.track for c in chunks})
-    print(f"indexed {len(chunks)} chunks across {len(tracks)} tracks: {', '.join(tracks)}")
+    per_track = ", ".join(f"{t} ({sum(c.track == t for c in chunks)})" for t in tracks)
+    print(f"indexed {len(chunks)} chunks across {len(tracks)} tracks: {per_track}")
     return 0
 
 
@@ -127,6 +143,11 @@ def cmd_rank(args) -> int:
     if not run_vacs:
         print(f"no vacancies for run {args.run}")
         return 1
+    try:
+        rules = RuleSet.load(args.rules) if args.rules else None  # a typo must not cost a model load first
+    except ValueError as e:
+        _err(str(e))
+        return 2
     chunks = store.profile_chunks()
     if not chunks:
         _err("profile is empty: run `vm index-profile` first")
@@ -147,7 +168,6 @@ def cmd_rank(args) -> int:
     n_no_fit = sum(1 for r in refs if r.label and r.label.label == "no_fit")
     # a vote from one class only says "everything is a fit": it needs both sides to mean anything
     weight = args.neighbor_weight if n_labeled >= args.min_labels and n_no_fit >= args.min_no_fits else 0.0
-    rules = RuleSet.load(args.rules) if args.rules else None
     today = date.fromisoformat(args.today) if args.today else date.today()
     ranked = rank(run_vacs, vecs, chunks, chunk_vecs, references=refs, neighbor_weight=weight, k_neighbors=args.k,
                   rules=rules, today=today, hybrid_alpha=args.hybrid, scale=snap[:2] if snap else None)
@@ -193,10 +213,23 @@ def cmd_eval(args) -> int:
     if actors and not any(l.actor in actors for l in labels.values()):
         print("no human labels yet: eval counts your own decisions by default; use --labels all to include the agent's")
         return 1
-    rules = RuleSet.load(args.rules) if args.rules else None
+    runs: dict[str, set[str]] = {}
+    for vid, lab in labels.items():
+        v = store.get_vacancy(vid)
+        if v and (actors is None or lab.actor in actors):
+            runs.setdefault(v.run_id, set()).add(lab.label)
+    if not any(kinds == {"fit", "no_fit"} for kinds in runs.values()):
+        print("nothing to measure yet: a run needs at least one fit and one no_fit label — label the ones you "
+              "skipped too (`vm label <url> no_fit --reasons ...`)")
+        return 1
+    try:
+        rules = RuleSet.load(args.rules) if args.rules else None
+    except ValueError as e:
+        _err(str(e))
+        return 2
     stages = [None, rules] if rules else [None]  # with rules, every config is measured without and with stage 2
     results = []
-    for model in [m.strip() for m in args.models.split(",") if m.strip()]:
+    for model in [m.strip() for m in (args.models or args.model).split(",") if m.strip()]:
         try:
             embedder = get_embedder(model)
         except EmbedderUnavailable as e:
@@ -222,6 +255,8 @@ def cmd_fetch(args) -> int:
     records, errors = collect(args.sources, where=args.where, log=_err)
     for e in errors:
         _err(e)
+    for r in records:
+        r["run_id"] = args.run or date.today().isoformat()  # `vm add` orders runs by this date
     lines = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
     if not records:
         _err("nothing collected")
@@ -258,8 +293,22 @@ def cmd_funnel(args) -> int:
     return 0
 
 
+WORKFLOW = """typical use:
+  vm index-profile resumes/                       resume-<track>-<LANG>.md files, all of them at once
+  vm fetch remotive:python greenhouse:gitlab --where remote --out run.jsonl
+  vm add run.jsonl                                 into the base (vm.db, or --db / VM_DB)
+  vm calibrate                                     once you have 50+ vacancies
+  vm rank --run 2026-10-15 --rules my-rules.yaml --out top.md
+  vm label <url> fit | no_fit --reasons onsite,low_pay
+  vm eval --rules my-rules.yaml                    after a few runs with fits and no_fits
+  vm funnel tracker.csv                            after you apply: whom to remind, reply rates
+each command has --help; the README explains the rules file and the score."""
+
+
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="vm", description="Rank vacancies against a profile and measure the ranking.")
+    p = argparse.ArgumentParser(prog="vm", formatter_class=argparse.RawDescriptionHelpFormatter,
+                                description="Rank vacancies against your resumes and your own terms, and measure it.",
+                                epilog=WORKFLOW)
     p.add_argument("--db", default=os.environ.get("VM_DB", "vm.db"))
     p.add_argument("--model", default=os.environ.get("VM_MODEL", DEFAULT_MODEL))
     sub = p.add_subparsers(dest="command", required=True)
@@ -294,14 +343,15 @@ def build_parser() -> argparse.ArgumentParser:
     lb.add_argument("ref", nargs="?", help="vacancy id or url")
     lb.add_argument("label", nargs="?", choices=["fit", "no_fit"])
     lb.add_argument("--file", default="")
-    lb.add_argument("--actor", default="agent", choices=["agent", "human"])
+    lb.add_argument("--actor", default="human", choices=["agent", "human"],
+                    help="human (default): your decision; agent: a suggestion, left out of eval by default")
     lb.add_argument("--track", default="")
     lb.add_argument("--reasons", default="")
     lb.add_argument("--note", default="")
     lb.set_defaults(func=cmd_label)
 
     e = sub.add_parser("eval", help="measure ranking quality on labeled vacancies")
-    e.add_argument("--models", default=os.environ.get("VM_MODEL", DEFAULT_MODEL))
+    e.add_argument("--models", default="", help="comma-separated models to compare; default: --model")
     e.add_argument("--neighbor-weights", default="0")
     e.add_argument("--hybrid-alphas", default="0")
     e.add_argument("--labels", default="human", choices=["human", "all"],
@@ -315,6 +365,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help=f"kind:argument, e.g. greenhouse:gitlab remotive:python; kinds: {', '.join(SOURCES)}")
     fe.add_argument("--where", default="", help="keep jobs whose title, location or work format match this regex")
     fe.add_argument("--out", default="", help="JSONL file; stdout when omitted")
+    fe.add_argument("--run", default="", help="run id with a date for `vm add`; default: today's date")
     fe.set_defaults(func=cmd_fetch)
 
     f = sub.add_parser("funnel", help="answers per week, channel and resume; whom to remind")

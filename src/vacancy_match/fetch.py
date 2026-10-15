@@ -26,6 +26,8 @@ USER_AGENT = "vacancy-match (+https://github.com/Augustforge/vacancy-match)"
 _PAY_RANGE = re.compile(r'class="pay-range">(.*?)</div>', re.S)
 _EMPLOYMENT = {"FullTime": "Full-time", "PartTime": "Part-time", "Intern": "Internship"}
 HH_API = "https://api.hh.ru"
+HOURLY_BELOW = 200  # a board's pay figure this small is an hourly rate, whatever the period it was filed under
+SEARCHES = {"remotive", "remoteok", "himalayas", "hh"}  # sources whose argument is a search the board may ignore
 HH_PAUSE = 0.25  # seconds between vacancy requests: one search brings up to 50 of them
 
 
@@ -43,8 +45,8 @@ def http_get(url: str, headers: dict | None = None, raw: bool = False):
 
 
 def _record(source, url, title, company, text, salary="", published="", work_format="", location="") -> dict:
-    fields = {"title": title, "company": company, "text": text, "salary_text": salary, "published_at": published,
-              "work_format": work_format, "location": location}
+    fields = {"title": unescape(title or ""), "company": unescape(company or ""), "text": text, "salary_text": salary,
+              "published_at": published, "work_format": work_format, "location": location}
     return {"source": source, "url": url, **{k: (v or "").strip() for k, v in fields.items()}}
 
 
@@ -72,13 +74,18 @@ def _range(currency: str, low, high, period: str) -> str:
     return _joined(currency, " – ".join(dict.fromkeys(figures)), period, sep=" ") if figures else ""
 
 
+def _hourly_if_small(pay: str) -> str:
+    figures = [float(x.replace(",", "")) for x in re.findall(r"\d[\d,]*(?:\.\d+)?", pay)]
+    return f"{pay} per hour" if figures and max(figures) < HOURLY_BELOW else pay
+
+
 def _greenhouse(board, get):
     out = []
     for j in get(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true")["jobs"]:
         content = unescape(j.get("content") or "")
         pay = _PAY_RANGE.search(content)
         out.append(_record("greenhouse", j["absolute_url"], j.get("title"), j.get("company_name") or board,
-                           html_to_text(content), html_to_text(pay.group(1)) if pay else "",
+                           html_to_text(content), _hourly_if_small(html_to_text(pay.group(1))) if pay else "",
                            j.get("first_published") or j.get("updated_at") or "", "",
                            (j.get("location") or {}).get("name", "")))
     return out
@@ -126,7 +133,8 @@ def _remotive(search, get):
 def _remoteok(tag, get):
     jobs = get("https://remoteok.com/api" + (f"?tag={quote_plus(tag)}" if tag else ""))
     return [_record("remoteok", j["url"], j.get("position"), j.get("company"), html_to_text(j.get("description", "")),
-                    _range("USD", j.get("salary_min"), j.get("salary_max"), "per year"), j.get("date", ""), "",
+                    _range("USD", j.get("salary_min"), j.get("salary_max"),
+                           "per hour" if (j.get("salary_max") or 0) < HOURLY_BELOW else "per year"), j.get("date", ""), "",
                     j.get("location", ""))
             for j in jobs if "position" in j]  # the first element is the terms of use
 
@@ -178,7 +186,7 @@ def _page(url, get):
     return [{"source": urlsplit(url).hostname or "page", "url": url, **found}]
 
 
-# kind → (collector, what the argument must be; None when it is optional)
+# kind → (collector, what the argument must be; None when it is optional, False when there is none)
 SOURCES = {
     "greenhouse": (_greenhouse, "a board name, e.g. greenhouse:<board>"),
     "lever": (_lever, "a board name, e.g. lever:<company>"),
@@ -186,7 +194,7 @@ SOURCES = {
     "remotive": (_remotive, "a search, e.g. remotive:python"),
     "remoteok": (_remoteok, None),
     "himalayas": (_himalayas, "a search, e.g. himalayas:python"),
-    "arbeitnow": (_arbeitnow, None),
+    "arbeitnow": (_arbeitnow, False),
     "hh": (_hh, "a search, e.g. hh:python"),
     "page": (_page, "a vacancy URL, e.g. page:https://..."),
 }
@@ -204,6 +212,9 @@ def collect(sources: list[str], get=None, where: str = "", log=None) -> tuple[li
             errors.append(f"{source}: unknown source; use one of {', '.join(SOURCES)}")
             continue
         collector, needs = SOURCES[kind]
+        if needs is False and arg.strip():
+            errors.append(f"{source}: takes no argument; filter with --where")
+            continue
         if needs and not arg.strip():
             errors.append(f"{source}: needs {needs}")
             continue
@@ -216,6 +227,10 @@ def collect(sources: list[str], get=None, where: str = "", log=None) -> tuple[li
             errors.append(f"{source}: {e}")
             continue
         kept = [r for r in got if not keep or keep.search(f"{r['title']}\n{r['location']}\n{r['work_format']}")]
+        term = arg.strip().lower()
+        if log and kind in SEARCHES and term and got and not any(term in f"{r['title']} {r['text']}".lower() for r in got):
+            log(f"{source}: none of the {len(got)} jobs mention {term!r} — the board may ignore the search; "
+                f"filter with --where")
         if log:
             log(f"{source}: {len(got)} found" + (f", {len(kept)} kept" if keep else ""))
         records += kept

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
-REASON_CODE = re.compile(r"[a-z][a-z0-9_]*")  # the candidate's own words: onsite, low_pay, scam
+REASON_CODE = re.compile(r"[^\W\d_][\w-]*")  # the candidate's own words, one per reason: onsite, cold-calls, ночь
 LABELS = frozenset({"fit", "no_fit"})
 ACTORS = frozenset({"agent", "human"})
 
@@ -150,4 +150,4 @@ class Label:
             raise ValueError(f"actor must be agent or human, got {self.actor!r}")
         bad = [r for r in self.reasons if not REASON_CODE.fullmatch(r)]
         if bad:
-            raise ValueError(f"reason codes are lowercase words like low_pay, got: {', '.join(bad)}")
+            raise ValueError(f"a reason code is one word, e.g. low_pay or cold-calls, got: {', '.join(bad)}")

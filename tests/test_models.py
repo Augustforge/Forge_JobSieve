@@ -50,7 +50,7 @@ def test_label_validates_values():
         Label(vacancy_id="x", label="maybe")
     with pytest.raises(ValueError):
         Label(vacancy_id="x", label="fit", actor="boss")
-    with pytest.raises(ValueError, match="reason codes"):
+    with pytest.raises(ValueError, match="reason code"):
         Label(vacancy_id="x", label="no_fit", reasons=("too far",))
 
 

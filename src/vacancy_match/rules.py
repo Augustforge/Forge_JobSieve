@@ -18,6 +18,9 @@ from .money import FULL_TIME_HOURS, is_hourly, is_part_time, monthly_hours, pars
 
 DEFAULT_LEVELS = {"slight": 0.9, "serious": 0.5, "boost": 1.1}
 TIERS = {"flags": None, "wishes": "slight", "conditions": "serious", "boosts": "boost", "red_lines": None}
+SECTIONS = set(TIERS) | {"levels", "stale", "salary"}
+PERIODS = {"month": 1, "year": 12}
+MAX_RATE = 5  # USD per one unit: no currency is worth more, so a bigger rate is written the other way round
 STALE_FACTOR = 0.8
 MIN_PART_TIME_HOURS = 40  # "созвон 1 час в день" is not a part-time schedule
 _PROJECT = re.compile(r"проект\w* или разов|разов\w* (?:задани|проект)|за проект|per project|fixed[- ]price|"
@@ -54,14 +57,46 @@ class Rule:
     patterns: list[re.Pattern]
 
 
+def _patterns(name: str, spec) -> list[re.Pattern]:
+    out = []
+    for p in [spec] if isinstance(spec, str) else list(spec or []):  # one pattern may be written as a plain string
+        if any(ord(ch) < 32 for ch in str(p)):
+            raise ValueError(f"rule {name}: pattern {p!r} has a control character — in YAML write regexes in single "
+                             f"quotes, e.g. '\\bllm\\b': inside double quotes \\b is a backspace")
+        try:
+            out.append(re.compile(str(p), re.I))
+        except re.error as e:
+            raise ValueError(f"rule {name}: bad regex {p!r}: {e}") from None
+    return out
+
+
 def _rules(tier: str, group: dict | None, levels: dict[str, float]) -> list[Rule]:
+    if group is not None and not isinstance(group, dict):
+        raise ValueError(f"section {tier} must map rule names to patterns, e.g. {tier}: {{onsite: ['office only']}}")
     out = []
     for name, spec in (group or {}).items():
         patterns, factor = (spec.get("patterns") or [], spec.get("factor")) if isinstance(spec, dict) else (spec, None)
         if factor is None:
             factor = {"flags": 1.0, "red_lines": 0.0}.get(tier) if TIERS[tier] is None else levels[TIERS[tier]]
-        out.append(Rule(name, tier, float(factor), [re.compile(p, re.I) for p in patterns]))
+        out.append(Rule(name, tier, float(factor), _patterns(name, patterns)))
     return out
+
+
+def _salary_curve(salary: dict) -> tuple[list[tuple[float, float]], dict[str, float]]:
+    """The curve converted to monthly USD — it may be written in the candidate's own currency and period."""
+    rates = {str(k): float(v) for k, v in (salary.get("rates") or {}).items()}
+    reversed_ = [f"{k}: {v:g}" for k, v in rates.items() if v > MAX_RATE]
+    if reversed_:
+        raise ValueError(f"salary rates are USD per one unit of the currency (KZT: 0.002 means 1 ₸ = $0.002); "
+                         f"{', '.join(reversed_)} looks written the other way round")
+    currency, period = str(salary.get("currency", "USD")), str(salary.get("period", "month"))
+    if period not in PERIODS:
+        raise ValueError(f"salary period must be one of {', '.join(PERIODS)}, got {period!r}")
+    rate = 1.0 if currency == "USD" else rates.get(currency)
+    if rate is None:
+        raise ValueError(f"salary currency {currency} needs a rate in salary.rates, e.g. {currency}: 1.08")
+    curve = sorted((float(k) * rate / PERIODS[period], float(v)) for k, v in (salary.get("curve") or {}).items())
+    return curve, rates
 
 
 def _parse_date(s: str) -> date | None:
@@ -94,16 +129,33 @@ class RuleSet:
 
     @classmethod
     def from_dict(cls, d: dict) -> "RuleSet":
+        unknown = sorted(set(d) - SECTIONS)
+        if unknown:
+            raise ValueError(f"unknown section {unknown[0]!r} in rules; sections are: {', '.join(sorted(SECTIONS))}")
         levels = {**DEFAULT_LEVELS, **(d.get("levels") or {})}
         stale, salary = d.get("stale") or {}, d.get("salary") or {}
+        curve, rates = _salary_curve(salary)
         return cls([r for tier in TIERS for r in _rules(tier, d.get(tier), levels)], stale.get("days"),
-                   float(stale.get("factor", STALE_FACTOR)),
-                   sorted((float(k), float(v)) for k, v in (salary.get("curve") or {}).items()),
-                   salary.get("rates") or {})
+                   float(stale.get("factor", STALE_FACTOR)), curve, rates)
 
     @classmethod
     def load(cls, path: str | Path) -> "RuleSet":
-        return cls.from_dict(yaml.safe_load(Path(path).read_text(encoding="utf-8-sig")) or {})
+        """Every problem with the file becomes one ValueError naming the file: the CLI prints it and stops."""
+        p = Path(path)
+        try:
+            data = yaml.safe_load(p.read_text(encoding="utf-8-sig"))
+        except FileNotFoundError:
+            raise ValueError(f"{p}: no such file") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"{p}: not UTF-8 text; save the rules file as UTF-8") from None
+        except yaml.YAMLError as e:
+            raise ValueError(f"{p}: YAML error: {' '.join(str(e).split())}") from None
+        if data is not None and not isinstance(data, dict):
+            raise ValueError(f"{p}: expected sections such as conditions: and salary:")
+        try:
+            return cls.from_dict(data or {})
+        except ValueError as e:
+            raise ValueError(f"{p}: {e}") from None
 
     def check(self, v: Vacancy, today: date) -> Check:
         hay = "\n".join((v.title, v.text, v.salary_text, v.work_format, v.location))

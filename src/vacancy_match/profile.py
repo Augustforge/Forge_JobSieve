@@ -65,7 +65,8 @@ def merge_short(pieces: list[tuple[str, str]], min_len: int = MIN_CHUNK) -> list
     return out
 
 
-def load_profile(paths: list[Path], exclude: set[str] = frozenset()) -> list[ProfileChunk]:
+def load_profile(paths: list[Path], exclude: set[str] = frozenset(), notes: list[str] | None = None) -> list[ProfileChunk]:
+    """Chunks of every resume; `notes` collects what the person should know about how a file was read."""
     chunks: list[ProfileChunk] = []
     for path in sorted({p.resolve() for p in paths}):  # a folder plus one of its files must not double chunks
         track, lang = track_and_lang(path)
@@ -73,6 +74,12 @@ def load_profile(paths: list[Path], exclude: set[str] = frozenset()) -> list[Pro
             continue
         text = path.read_text(encoding="utf-8-sig")  # PowerShell writes a BOM
         lang = lang or detect_lang(text)
-        for n, (section, body) in enumerate(merge_short(split_markdown(text))):
+        pieces = split_markdown(text)
+        if all(name == "header" for name, _ in pieces) and text.strip():
+            pieces = [("resume", text.strip())]  # plain text, no sections: still the person's experience
+            if notes is not None:
+                notes.append(f"{path.name} has no '## ' sections; indexed as one chunk — sections and **bold** "
+                             f"project lines match vacancies better")
+        for n, (section, body) in enumerate(merge_short(pieces)):
             chunks.append(ProfileChunk(f"{track}-{lang}-{n:02d}", track, lang, section, body))
     return chunks

@@ -3,20 +3,24 @@
 # wants $1500 a month and will not go below $1100.
 # Every effect multiplies the calibrated fit (0-100). The factors are starting guesses: tune them with the
 # rule report of `vm eval` (a rule that mostly hits vacancies you took is too strict).
+# Patterns are regular expressions, case-insensitive. Write them in single quotes: inside double quotes YAML
+# turns \b into a backspace.
 levels: {slight: 0.9, serious: 0.5, boost: 1.1}
 flags:          # shown, never change the score
-  agency: ["outstaff|staffing agency"]
+  agency: ['outstaff|staffing agency']
 wishes:         # nice to have: x slight
-  on_call: ["on-?call", "24/7 support"]
+  on_call: ['on-?call', '24/7 support']
 conditions:     # deal-breakers a regex may still misread: x serious
-  language: ["fluent german", "german \\(?c1", "native german"]
-  onsite: ["on-?site only", "office[- ]based", "relocation required"]
-  clearance: ["security clearance"]
+  language: ['fluent german', 'german \(?c1', 'native german']
+  onsite: ['on-?site only', 'office[- ]based', 'relocation required']
+  clearance: 'security clearance'   # one pattern may be a plain string
 boosts:         # what the candidate wants most: x boost
-  open_source: ["open[- ]source"]
+  open_source: ['open[- ]source']
 red_lines:      # cut: shown at the bottom with the reason
-  upfront_fee: ["pay (for|a) (training|starter kit|registration)", "registration fee"]
+  upfront_fee: ['pay (for|a) (training|starter kit|registration)', 'registration fee']
 stale: {days: 30, factor: 0.8}
-salary:         # monthly USD; a range counts at its middle; below the lowest point the vacancy is cut
+salary:         # a range counts at its middle; below the lowest point the vacancy is cut
+  currency: USD   # the curve's currency and period; e.g. currency: EUR, period: year, curve: {60000: 1.0, 48000: 0.5}
+  period: month
   curve: {1500: 1.0, 1350: 0.9, 1200: 0.65, 1100: 0.5}
-  rates: {USD: 1.0, EUR: 1.08, GBP: 1.27}
+  rates: {USD: 1.0, EUR: 1.08, GBP: 1.27}   # USD per one unit of each currency vacancies may be paid in

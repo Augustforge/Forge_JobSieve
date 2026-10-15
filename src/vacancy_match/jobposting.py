@@ -64,6 +64,15 @@ def _work_format(obj: dict) -> str:
     return ", ".join(parts + [_EMPLOYMENT.get(str(k).upper(), str(k).lower()) for k in kinds if k])
 
 
+# hh renders the salary and the work format next to its JSON-LD, not inside it
+_HH_SALARY = re.compile(r'data-qa="vacancy-salary"[^>]*>(.*?)</div>', re.S)
+_HH_FORMAT = re.compile(r'data-qa="(?:common-employment-text|work-formats-text)"[^>]*>(.*?)</p>', re.S)
+
+
+def _flat(fragment: str) -> str:
+    return " ".join(html_to_text(fragment).split())
+
+
 def parse_jobposting(page_html: str) -> dict | None:
     for block in _LD.findall(page_html):
         try:
@@ -85,7 +94,8 @@ def parse_jobposting(page_html: str) -> dict | None:
                 "text": html_to_text(str(obj.get("description") or "")),
                 "published_at": str(obj.get("datePosted", "")),
                 "location": city,
-                "work_format": _work_format(obj),
-                "salary_text": _salary(obj.get("baseSalary")),
+                "work_format": _work_format(obj) or "; ".join(_flat(x) for x in _HH_FORMAT.findall(page_html)),
+                "salary_text": _salary(obj.get("baseSalary")) or (_flat(m.group(1)) if (m := _HH_SALARY.search(
+                    page_html)) else ""),
             }
     return None

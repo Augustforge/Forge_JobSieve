@@ -6,6 +6,7 @@ enough for one reminder. Silence is counted in working days from the last messag
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -18,6 +19,10 @@ INTERVIEWED = {"interview", "offer"}
 OPEN = ("sent", "replied", "interview", "offer")
 REQUIRED = ("company", "sent")
 DEFAULT_WAIT = 5  # working days of silence before one reminder
+STATUS_WORDS = {"черновик": "draft", "отправлено": "sent", "отправлен": "sent", "ответили": "replied",
+                "ответ": "replied", "собеседование": "interview", "интервью": "interview", "оффер": "offer",
+                "отказ": "rejected", "закрыто": "closed", "закрыт": "closed"}
+DOTTED = re.compile(r"\d{1,2}\.\d{1,2}\.\d{4}")
 
 
 @dataclass
@@ -98,7 +103,12 @@ def by_week(apps: list[Application]) -> list[Rate]:
 
 def _date(row: dict, field: str) -> date | None:
     value = (row.get(field) or "").strip()
-    return date.fromisoformat(value) if value else None
+    if not value:
+        return None
+    if DOTTED.fullmatch(value):  # Excel in many locales writes 05.10.2026
+        day, month, year = value.split(".")
+        return date(int(year), int(month), int(day))
+    return date.fromisoformat(value)
 
 
 def load_tracker(path: str | Path) -> tuple[list[Application], list[str]]:
@@ -117,6 +127,7 @@ def load_tracker(path: str | Path) -> tuple[list[Application], list[str]]:
             where = f"line {reader.line_num + 1}"
             company = (row.get("company") or "").strip()
             status = (row.get("status") or "").strip().lower() or "sent"
+            status = STATUS_WORDS.get(status, status)
             if not company:
                 skipped.append(f"{where}: no company")
                 continue

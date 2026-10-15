@@ -77,8 +77,8 @@ def test_label_file_bad_line_stores_nothing(env, capsys):
 
 def test_add_without_run_is_rejected(env, capsys):
     tmp, base = env
-    assert main(base + ["add", str(tmp / "run.jsonl")]) == 0
-    assert "skip line 1" in capsys.readouterr().err
+    assert main(base + ["add", str(tmp / "run.jsonl")]) == 1  # nothing to add is a failure, said once
+    assert "3 records have no dated run id" in capsys.readouterr().err
 
 
 def test_eval_without_labels(env, capsys):
@@ -112,8 +112,8 @@ def test_cli_prints_utf8_under_cp1251(env):
 
 def test_add_rejects_run_without_date(env, capsys):
     tmp, base = env
-    assert main(base + ["add", str(tmp / "run.jsonl"), "--run", "history"]) == 0
-    assert "no date" in capsys.readouterr().err
+    assert main(base + ["add", str(tmp / "run.jsonl"), "--run", "history"]) == 1
+    assert "no dated run id" in capsys.readouterr().err
     assert Store(tmp / "vm.db").vacancies() == []
 
 
@@ -190,8 +190,8 @@ def test_eval_defaults_to_human_decisions(env, capsys):
     tmp, base = env
     main(base + ["index-profile", str(tmp / "profile")])
     main(base + ["add", str(tmp / "run.jsonl"), "--run", "2026-10-14"])
-    main(base + ["label", "https://hh.kz/vacancy/1", "fit"])  # agent labels only
-    main(base + ["label", "https://hh.kz/vacancy/2", "no_fit"])
+    main(base + ["label", "https://hh.kz/vacancy/1", "fit", "--actor", "agent"])  # agent labels only
+    main(base + ["label", "https://hh.kz/vacancy/2", "no_fit", "--actor", "agent"])
     capsys.readouterr()
     assert main(base + ["eval", "--models", "hash-256"]) == 1
     assert "--labels all" in capsys.readouterr().out

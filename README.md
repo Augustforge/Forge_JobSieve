@@ -32,7 +32,8 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
 4. **0–100.** Raw similarity lives in a band a few hundredths wide, where "a little lower" and "much lower" look the
    same. So it is mapped to 0–100 against all known vacancies: the median vacancy gets 50, the 10th and 90th
    percentiles land near 10 and 90. The scale is frozen per model, so a vacancy keeps its fit as the base grows;
-   `vm calibrate` re-measures it on purpose.
+   `vm calibrate` re-measures it on purpose. The scale is shared by the whole base: in a base that is mostly English, every Russian
+   vacancy sits unusually close to a Russian resume, so keep one base per language mix you actually search in.
 
 ### Stage 2: score, the candidate's terms
 
@@ -47,7 +48,7 @@ candidate below (target $1500, floor $1100):
 | Data entry, "pay a registration fee for your starter kit" | 40 | upfront_fee: cut | bottom of the list, reason shown |
 
 Effects multiply instead of subtracting, so a near-perfect vacancy with one serious miss can still beat a mediocre
-one with none. A cut sends a vacancy below every other one whatever its fit.
+one with none. A cut sends a vacancy below every other one whatever its fit. Boosts can lift a score above 100.
 
 ### Feedback from your decisions
 
@@ -76,18 +77,27 @@ Terms are regular expressions in a YAML file, grouped by how much they matter:
 
 ```yaml
 wishes:
-  on_call: ["on-?call", "24/7 support"]
+  on_call: ['on-?call', '24/7 support']
 conditions:
-  language: ["fluent german", "german \\(?c1", "native german"]
+  language: ['fluent german', 'german \(?c1', 'native german']
 red_lines:
-  upfront_fee: ["pay (for|a) (training|starter kit|registration)", "registration fee"]
-salary:   # monthly USD: $1500 and up no effect, $1350 ×0.9, $1200 ×0.65, $1100 ×0.5, below $1100 cut
+  upfront_fee: 'registration fee'      # one pattern may be a plain string
+salary:   # $1500 a month and up no effect, $1350 ×0.9, $1200 ×0.65, $1100 ×0.5, below $1100 cut
+  currency: USD
+  period: month
   curve: {1500: 1.0, 1350: 0.9, 1200: 0.65, 1100: 0.5}
   rates: {USD: 1.0, EUR: 1.08, GBP: 1.27}
 ```
 
 The whole file: [`examples/rules.example.yaml`](examples/rules.example.yaml). `levels:` changes the tier defaults;
-any rule can set its own, e.g. `office: {patterns: ["office"], factor: 0.7}`.
+any rule can set its own, e.g. `office: {patterns: ['office'], factor: 0.7}`.
+
+- **Patterns** are case-insensitive regular expressions. Write them in single quotes: inside YAML double quotes `\b`
+  turns into a backspace. Mistakes — an unknown section such as `wishs:`, a broken regex, a YAML error — stop the
+  command with one line that names them, before the model loads.
+- **The salary curve** is written in your own currency and period: `currency: EUR`, `period: year`,
+  `curve: {60000: 1.0, 48000: 0.5}`. `rates` say how many USD one unit of a currency is worth (`EUR: 1.08`,
+  `KZT: 0.002`); a rate written the other way round (`KZT: 450`) is refused.
 
 - **Why a condition halves instead of cutting:** a regex misreads ("German is a plus"), so a serious miss costs half
   and a near-perfect vacancy still surfaces with the reason next to it. Cuts are for what is never worth reading.
@@ -102,7 +112,9 @@ any rule can set its own, e.g. `office: {patterns: ["office"], factor: 0.7}`.
 
 ## Quick start
 
-Needs Python 3.11+ and [uv](https://docs.astral.sh/uv/). The default model (~1 GB) downloads on first use; no API key.
+Needs [uv](https://docs.astral.sh/uv/); it fetches Python 3.13 itself. About 2 GB of disk: the environment with
+PyTorch is ~0.8 GB, the default model ~1 GB downloads on first use and is read from the cache after that. No API key.
+On Windows the commands are the same in PowerShell; set variables with `$env:VM_DB = "my.db"` instead of `export`.
 
 ```bash
 git clone https://github.com/Augustforge/vacancy-match && cd vacancy-match
@@ -119,13 +131,16 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 ## Use it on your own search
 
 1. **Resumes.** One Markdown file per direction you apply for, named `resume-<TRACK>-<LANG>.md`
-   (`resume-backend-EN.md`, `resume-data-RU.md`). `##` sections and `**bold**` project lines become chunks.
+   (`resume-backend-EN.md`, `resume-data-RU.md`), all in one folder. `##` sections and `**bold**` project lines become
+   chunks; a file without them is indexed as one chunk, with a note. `index-profile` replaces the whole profile, so
+   index the folder, not one file.
 2. **Your terms (optional).** Copy `examples/rules.example.yaml` and write your own salary curve, conditions, wishes
    and red lines. Skip it and the ranking is resume fit alone.
 3. **Vacancies.** `vm fetch` collects them from the boards' own public APIs — no scraping, no login — into JSONL,
    one run per file (see the table below). Any other source works too: JSONL with `source`, `url`, `title` and
    ideally `company`, `text`, `salary_text`, `published_at`, `work_format` (full-time, part-time, project) and
-   `location`. The run id must contain a date (`2026-10-14`, `links-2026-10-14`): runs are replayed in date order.
+   `location`. Every run has an id with a date (`2026-10-14`, `links-2026-10-14`) — runs are replayed in date order.
+   `vm fetch` stamps today's date (or `--run`); for your own JSONL pass `vm add file.jsonl --run 2026-10-14`.
 4. **Run it:**
 
 ```bash
@@ -135,8 +150,8 @@ uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote
 uv run vm add run.jsonl --run 2026-10-14
 uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
 uv run vm rank --run 2026-10-14 --out top.md
-uv run vm label <url> fit --actor human --track backend          # every decision, fit and no_fit
-uv run vm label <url> no_fit --actor human --reasons onsite,low_pay   # reasons are your own words
+uv run vm label <url> fit --track backend          # every decision, fit and no_fit
+uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each
 uv run vm eval --rules my-rules.yaml               # after a few runs with real rejections
 ```
 
@@ -167,8 +182,8 @@ Ranking decides what to send; the funnel shows what happened to it. Keep a CSV t
 | column | meaning |
 |---|---|
 | `company` | required |
-| `sent` | `YYYY-MM-DD`, required unless the row is a draft |
-| `status` | `draft` (not confirmed sent) · `sent` · `replied` · `interview` · `offer` · `rejected` · `closed` (you stopped) |
+| `sent` | `2026-10-05` or `05.10.2026`, required unless the row is a draft |
+| `status` | `draft` (not confirmed sent) · `sent` · `replied` · `interview` · `offer` · `rejected` · `closed` (you stopped); Russian words such as `отправлено`, `отказ` work too |
 | `channel` | how you sent it: email, form, board, a messenger |
 | `track`, `source` | which resume; where you found the vacancy |
 | `replied` | date of their first answer — keep it when you close a thread that did get one |

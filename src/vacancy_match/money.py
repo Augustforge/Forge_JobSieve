@@ -10,11 +10,16 @@ _CURRENCIES = [
     ("KZT", re.compile(r"₸|тенге|\bkzt\b", re.I)),
     ("RUB", re.compile(r"₽|руб|\brub\b|\brur\b", re.I)),
     ("EUR", re.compile(r"€|\beur\b|евро", re.I)),
+    ("GBP", re.compile(r"£|\bgbp\b|фунт", re.I)),
+    ("CHF", re.compile(r"\bchf\b|франк", re.I)),
     ("USD", re.compile(r"\$|\busdt?\b|долл", re.I)),
 ]
 _HOURLY = re.compile(r"в час|per hour|hourly|/\s*h(?:ou)?r\b", re.I)
 _YEARLY = re.compile(r"в год|per year|annual|/\s*y(?:ea)?r\b", re.I)
+_WEEKLY = re.compile(r"в неделю|за неделю|per week|weekly|/\s*w(?:ee)?k\b", re.I)
+_DAILY = re.compile(r"в день|за день|за смену|per day|daily|per shift|/\s*day\b", re.I)
 _MONTHLY = re.compile(r"в месяц|за месяц|/\s*мес|per month|a month|monthly|/\s*mo\b", re.I)
+_K_RANGE = re.compile(r"(\d+(?:[.,]\d+)?)\s*([-–—])\s*(\d+(?:[.,]\d+)?)\s*(k\b|к\b|тыс\.?)", re.I)  # "50-60k"
 YEARLY_ABOVE = 15000  # USD: with no period stated, a "monthly" figure above this is a yearly salary (US/EU boards)
 _BONUS = re.compile(r"\+|преми|бонус|\bkpi\b|bonus|комисси|commission", re.I)
 FULL_TIME_HOURS = 160
@@ -56,6 +61,7 @@ def parse_salary_usd(text: str, rates: dict[str, float]) -> float | None:
         return None
     amounts_text = _PERCENT.sub(" ", text)  # "+ 30% от продаж" is not an amount
     amounts_text = _BONUS.split(amounts_text, maxsplit=1)[0]  # "+ KPI до 40 000" is not the low end of a range
+    amounts_text = _K_RANGE.sub(lambda m: f"{m[1]}{m[4]} {m[2]} {m[3]}{m[4]}", amounts_text)  # the k is for both
     amounts = [a for a in (_to_number(m.group(1), m.group(2)) for m in _NUM.finditer(amounts_text)) if a > 0]
     if not amounts:
         return None
@@ -67,6 +73,10 @@ def parse_salary_usd(text: str, rates: dict[str, float]) -> float | None:
         monthly *= FULL_TIME_HOURS
     elif _YEARLY.search(text):
         monthly /= 12
+    elif _WEEKLY.search(text) and not _HOURS.search(text):  # "40h/week" is the schedule, not the pay period
+        monthly *= WEEKS_PER_MONTH
+    elif _DAILY.search(text) and not _HOURS.search(text):
+        monthly *= WORKDAYS_PER_MONTH
     elif not _MONTHLY.search(text) and monthly * rates[currency] > YEARLY_ABOVE:
         monthly /= 12
     return round(monthly * rates[currency], 2)
