@@ -103,7 +103,7 @@ def cmd_add(args) -> int:
     if not vacancies:
         return 1
     res = store.add_vacancies(vacancies)
-    print(f"added {res.new} new, {res.known} already known")
+    print(f"added {res.new} new, {res.known} already known — run {', '.join(sorted({v.run_id for v in vacancies}))}")
     try:
         stored = [store.get_vacancy(v.id) for v in vacancies]  # the store may keep a longer text than this file
         ensure_embeddings(store, get_embedder(args.model), "vacancy",
@@ -252,17 +252,21 @@ def cmd_eval(args) -> int:
 
 
 def cmd_fetch(args) -> int:
+    run = args.run or date.today().isoformat()
+    if not run_date(run):
+        _err(f"run id {run!r} has no date — runs are ordered by date: use e.g. 2026-10-15 or python-2026-10-15")
+        return 2
     records, errors = collect(args.sources, where=args.where, log=_err)
     for e in errors:
         _err(e)
     for r in records:
-        r["run_id"] = args.run or date.today().isoformat()  # `vm add` orders runs by this date
+        r["run_id"] = run  # `vm add` orders runs by this date
     lines = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
     if not records:
         _err("nothing collected")
     elif args.out:
         Path(args.out).write_text(lines, encoding="utf-8")
-        _err(f"wrote {len(records)} vacancies to {args.out}")
+        _err(f"wrote {len(records)} vacancies to {args.out}, run {run}")
     else:
         sys.stdout.write(lines)
     return 0 if records else 1

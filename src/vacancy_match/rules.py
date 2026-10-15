@@ -84,7 +84,7 @@ def _rules(tier: str, group: dict | None, levels: dict[str, float]) -> list[Rule
 
 def _salary_curve(salary: dict) -> tuple[list[tuple[float, float]], dict[str, float]]:
     """The curve converted to monthly USD — it may be written in the candidate's own currency and period."""
-    rates = {str(k): float(v) for k, v in (salary.get("rates") or {}).items()}
+    rates = {"USD": 1.0, **{str(k): float(v) for k, v in (salary.get("rates") or {}).items()}}
     reversed_ = [f"{k}: {v:g}" for k, v in rates.items() if v > MAX_RATE]
     if reversed_:
         raise ValueError(f"salary rates are USD per one unit of the currency (KZT: 0.002 means 1 ₸ = $0.002); "

@@ -26,6 +26,7 @@ USER_AGENT = "vacancy-match (+https://github.com/Augustforge/vacancy-match)"
 _PAY_RANGE = re.compile(r'class="pay-range">(.*?)</div>', re.S)
 _EMPLOYMENT = {"FullTime": "Full-time", "PartTime": "Part-time", "Intern": "Internship"}
 HH_API = "https://api.hh.ru"
+_MOJIBAKE = re.compile("[\u00c2-\u00f4][\u0080-\u00bf]")
 HOURLY_BELOW = 200  # a board's pay figure this small is an hourly rate, whatever the period it was filed under
 SEARCHES = {"remotive", "remoteok", "himalayas", "hh"}  # sources whose argument is a search the board may ignore
 HH_PAUSE = 0.25  # seconds between vacancy requests: one search brings up to 50 of them
@@ -75,7 +76,8 @@ def _range(currency: str, low, high, period: str) -> str:
 
 
 def _hourly_if_small(pay: str) -> str:
-    figures = [float(x.replace(",", "")) for x in re.findall(r"\d[\d,]*(?:\.\d+)?", pay)]
+    figures = [float(x.replace(",", "")) * (1000 if k else 1)
+               for x, k in re.findall(r"(\d[\d,]*(?:\.\d+)?)\s*([kK])?", pay)]
     return f"{pay} per hour" if figures and max(figures) < HOURLY_BELOW else pay
 
 
@@ -130,11 +132,23 @@ def _remotive(search, get):
             for j in get(f"https://remotive.com/api/remote-jobs?search={quote_plus(search)}")["jobs"]]
 
 
+def _demojibake(s: str) -> str:
+    """Remote OK sends UTF-8 that was decoded as Latin-1 once too often: "â\x80\x94" for "—"."""
+    if not _MOJIBAKE.search(s or ""):
+        return s or ""
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
 def _remoteok(tag, get):
     jobs = get("https://remoteok.com/api" + (f"?tag={quote_plus(tag)}" if tag else ""))
-    return [_record("remoteok", j["url"], j.get("position"), j.get("company"), html_to_text(j.get("description", "")),
+    return [_record("remoteok", j["url"], _demojibake(j.get("position")), _demojibake(j.get("company")),
+                    html_to_text(_demojibake(j.get("description", ""))),
                     _range("USD", j.get("salary_min"), j.get("salary_max"),
-                           "per hour" if (j.get("salary_max") or 0) < HOURLY_BELOW else "per year"), j.get("date", ""), "",
+                           "per hour" if max(j.get("salary_min") or 0, j.get("salary_max") or 0) < HOURLY_BELOW
+                           else "per year"), j.get("date", ""), "",
                     j.get("location", ""))
             for j in jobs if "position" in j]  # the first element is the terms of use
 

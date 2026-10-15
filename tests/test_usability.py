@@ -227,3 +227,62 @@ def test_tracker_accepts_dotted_dates_and_russian_statuses(tmp_path):
     apps, skipped = load_tracker(p)
     assert skipped == [] and [(a.sent, a.status) for a in apps] == [(date(2026, 10, 5), "sent"),
                                                                      (date(2026, 10, 6), "rejected")]
+
+
+# --- second stranger pass ---
+
+def test_usd_needs_no_rate_even_when_the_curve_is_in_euros():
+    r = RuleSet.from_dict({"salary": {"currency": "EUR", "period": "year", "curve": {60000: 1.0, 48000: 0.5},
+                                      "rates": {"EUR": 1.1}}})
+    c = r.check(vac(salary="USD 70000 per year"), T)
+    assert "no_salary" not in c.flags and c.cut == []
+
+
+def test_fetch_and_add_say_the_run_and_reject_an_undated_one(tmp_path, monkeypatch, capsys):
+    payload = {"jobs": [{"absolute_url": "https://g/1", "title": "Dev", "company_name": "F", "content": "Python " * 40}]}
+    monkeypatch.setattr(fetch_mod, "http_get", fake({"https://boards-api.greenhouse.io/v1/boards/f/jobs?content=true":
+                                                     payload}))
+    out = tmp_path / "run.jsonl"
+    assert main(["fetch", "greenhouse:f", "--run", "python-test", "--out", str(out)]) == 2
+    assert "no date" in capsys.readouterr().err
+    assert main(["fetch", "greenhouse:f", "--run", "2026-10-15", "--out", str(out)]) == 0
+    assert "run 2026-10-15" in capsys.readouterr().err
+    assert main(["--db", str(tmp_path / "vm.db"), "--model", "hash-64", "add", str(out)]) == 0
+    assert "run 2026-10-15" in capsys.readouterr().out
+
+
+def test_hourly_guess_respects_thousands_and_a_missing_maximum():
+    gh = {"jobs": [{"absolute_url": "https://g/1", "title": "Eng", "company_name": "F",
+                    "content": '<div class="pay-range"><span>$95K</span><span>$120K USD</span></div>'}]}
+    ok = [{"legal": "x"}, {"position": "Dev", "company": "C", "url": "https://r/1", "description": "",
+                           "salary_min": 80000, "salary_max": 0}]
+    records, _ = collect(["greenhouse:f", "remoteok"], get=fake({
+        "https://boards-api.greenhouse.io/v1/boards/f/jobs?content=true": gh, "https://remoteok.com/api": ok}))
+    assert [r["salary_text"] for r in records] == ["$95K$120K USD", "USD 80000 per year"]
+
+
+def test_remoteok_mojibake_is_repaired():
+    ok = [{"legal": "x"}, {"position": "Oracle Lead \u00e2\u0080\u0094 Remote", "company": "C", "url": "https://r/1",
+                           "description": "<p>caf\u00c3\u00a9</p>"}]
+    [r] = collect(["remoteok"], get=fake({"https://remoteok.com/api": ok}))[0]
+    assert (r["title"], r["text"]) == ("Oracle Lead — Remote", "café")
+
+
+def test_funnel_channels_ignore_case(tmp_path):
+    p = tmp_path / "t.csv"
+    p.write_text("company,sent,channel\nA,2026-10-01,Email\nB,2026-10-02,email\n", encoding="utf-8")
+    assert {a.channel for a in load_tracker(p)[0]} == {"email"}
+
+
+def test_hh_work_format_parts_keep_a_separator():
+    page = ('<script type="application/ld+json">{"@type": "JobPosting", "title": "T", "description": "x"}</script>'
+            '<p data-qa="common-employment-text">Полная занятость<span>Стажировка</span></p>')
+    assert parse_jobposting(page)["work_format"] == "Полная занятость, Стажировка"
+
+
+def test_label_file_keeps_notes_with_unicode_line_separators(tmp_path):
+    from vacancy_match.labels import load_label_file
+    p = tmp_path / "l.jsonl"
+    p.write_text(json.dumps({"vacancy_id": "a", "label": "fit", "note": "one\u2028two"}, ensure_ascii=False) + "\n",
+                 encoding="utf-8")
+    assert load_label_file(p)[0].note == "one\u2028two"

@@ -142,7 +142,7 @@ def load_tracker(path: str | Path) -> tuple[list[Application], list[str]]:
             if dates["sent"] is None and status != "draft":
                 skipped.append(f"{where}: no sent date")
                 continue
-            apps.append(Application(company, dates["sent"], status, (row.get("channel") or "").strip(),
+            apps.append(Application(company, dates["sent"], status, (row.get("channel") or "").strip().lower(),
                                     (row.get("track") or "").strip(), (row.get("source") or "").strip(),
                                     dates["replied"], dates["updated"], (row.get("note") or "").strip()))
     return apps, skipped

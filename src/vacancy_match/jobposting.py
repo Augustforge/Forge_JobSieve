@@ -73,6 +73,11 @@ def _flat(fragment: str) -> str:
     return " ".join(html_to_text(fragment).split())
 
 
+def _parts(fragment: str) -> str:
+    """Text pieces of an element joined with commas: hh puts "Полная занятость" and "Стажировка" in sibling tags."""
+    return ", ".join(" ".join(html.unescape(x).split()) for x in re.split(r"<[^>]+>", fragment) if x.strip())
+
+
 def parse_jobposting(page_html: str) -> dict | None:
     for block in _LD.findall(page_html):
         try:
@@ -94,7 +99,7 @@ def parse_jobposting(page_html: str) -> dict | None:
                 "text": html_to_text(str(obj.get("description") or "")),
                 "published_at": str(obj.get("datePosted", "")),
                 "location": city,
-                "work_format": _work_format(obj) or "; ".join(_flat(x) for x in _HH_FORMAT.findall(page_html)),
+                "work_format": _work_format(obj) or "; ".join(_parts(x) for x in _HH_FORMAT.findall(page_html)),
                 "salary_text": _salary(obj.get("baseSalary")) or (_flat(m.group(1)) if (m := _HH_SALARY.search(
                     page_html)) else ""),
             }

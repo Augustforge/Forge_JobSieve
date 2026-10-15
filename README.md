@@ -97,7 +97,8 @@ any rule can set its own, e.g. `office: {patterns: ['office'], factor: 0.7}`.
   command with one line that names them, before the model loads.
 - **The salary curve** is written in your own currency and period: `currency: EUR`, `period: year`,
   `curve: {60000: 1.0, 48000: 0.5}`. `rates` say how many USD one unit of a currency is worth (`EUR: 1.08`,
-  `KZT: 0.002`); a rate written the other way round (`KZT: 450`) is refused.
+  `KZT: 0.002`) — list every currency vacancies may be paid in, USD is always 1; a rate written the other way round
+  (`KZT: 450`) is refused. Cards show the salary converted to USD a month.
 
 - **Why a condition halves instead of cutting:** a regex misreads ("German is a plus"), so a serious miss costs half
   and a near-perfect vacancy still surfaces with the reason next to it. Cuts are for what is never worth reading.
@@ -131,8 +132,10 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 ## Use it on your own search
 
 1. **Resumes.** One Markdown file per direction you apply for, named `resume-<TRACK>-<LANG>.md`
-   (`resume-backend-EN.md`, `resume-data-RU.md`), all in one folder. `##` sections and `**bold**` project lines become
-   chunks; a file without them is indexed as one chunk, with a note. `index-profile` replaces the whole profile, so
+   (`resume-backend-EN.md`, `resume-data-RU.md`), all in one folder. Each `## Section` becomes a chunk, and inside a
+   section a line that is bold as a whole (`**Order bot**`) starts a project chunk. Above the first `##` only `###`
+   lines (your title) are kept — name and contacts are skipped. A file without `##` is indexed as one chunk, with a
+   note. `index-profile` replaces the whole profile, so
    index the folder, not one file.
 2. **Your terms (optional).** Copy `examples/rules.example.yaml` and write your own salary curve, conditions, wishes
    and red lines. Skip it and the ranking is resume fit alone.
@@ -147,9 +150,9 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 export VM_DB=my.db VM_RULES=my-rules.yaml          # or pass --db / --rules
 uv run vm index-profile path/to/resumes
 uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
-uv run vm add run.jsonl --run 2026-10-14
+uv run vm add run.jsonl                            # prints the run id fetch stamped: today's date
 uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
-uv run vm rank --run 2026-10-14 --out top.md
+uv run vm rank --run 2026-10-14 --out top.md       # the run id from the line above
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
 uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each
 uv run vm eval --rules my-rules.yaml               # after a few runs with real rejections

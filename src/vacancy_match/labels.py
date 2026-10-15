@@ -20,7 +20,7 @@ def label_from_dict(d: dict) -> Label:
 
 def load_label_file(path: str | Path) -> list[Label]:
     labels = []
-    for n, line in enumerate(Path(path).read_text(encoding="utf-8-sig").splitlines(), 1):
+    for n, line in enumerate(Path(path).read_text(encoding="utf-8-sig").split("\n"), 1):  # not splitlines: JSON keeps U+2028 inside strings
         if not line.strip():
             continue
         try:
