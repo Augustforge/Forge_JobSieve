@@ -87,6 +87,7 @@ _STOPWORDS = {
     "tr": "ve bir i\u00e7in ile bu da de olarak en \u00e7ok olan biz",
 }
 _STOPWORD_SETS = {lang: set(words.split()) for lang, words in _STOPWORDS.items()}
+_POLISH_ONLY = set("ąęłńśźż")
 _WORD = re.compile(r"[^\W\d_]+")
 
 
@@ -99,12 +100,16 @@ def detect_lang(text: str) -> str:
     counts = {lang: sum(1 for c in letters if lo <= c <= hi) for lang, lo, hi in _SCRIPTS}
     script, n = max(counts.items(), key=lambda kv: kv[1])
     cjk = counts["ja"] + counts["zh"]
-    if script in ("zh", "ja") and counts["ja"] >= 0.2 * cjk:  # kana is only Japanese, kanji alone reads as Chinese;
-        script, n = "ja", cjk                                 # one Japanese company name keeps Chinese text Chinese
+    hiragana = sum(1 for c in letters if "぀" <= c <= "ゟ")
+    # kanji alone reads as Chinese; Japanese grammar is hiragana, while Chinese text quoting a Japanese company name
+    # has katakana only
+    if script in ("zh", "ja") and (hiragana or counts["ja"] >= 0.5 * cjk):
+        script, n = "ja", cjk
     if n / len(letters) > 0.3:
         return script
     words = [w.lower() for w in _WORD.findall(text) if len(w) > 1]  # not the "e" of e-commerce or the "a" of A/B
     votes = {lang: sum(w in stop for w in words) for lang, stop in _STOPWORD_SETS.items()}
+    votes["pl"] += sum(c in _POLISH_ONLY for c in text.lower())  # its frequent words are mostly one letter: w, z, i
     best = max(votes, key=votes.get)
     if votes[best]:
         return best
