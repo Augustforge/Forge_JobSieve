@@ -93,6 +93,11 @@ def test_cli_ranks_and_calibrates_per_language(tmp_path, monkeypatch, capsys):
     ("We are looking for a Python developer to join the team at 株式会社メルカリ and build our backend", "en"),
     ("Ищем Python-разработчика, японский язык (にほんご) будет плюсом, работа удалённая", "ru"),
     ("Ищем backend-разработчика: Python, FastAPI, PostgreSQL, Docker, Kubernetes, Redis, Kafka, CI/CD", "ru"),
+    ("Ищем backend-разработчика в e-commerce: Python, FastAPI, PostgreSQL, Docker, Kubernetes, Redis", "ru"),
+    ("Ищем аналитика: SQL, Python, Tableau, Airflow, ClickHouse, A/B тесты, Looker, dbt", "ru"),
+    ("招聘后端工程师 Python Django PostgreSQL Docker Kubernetes e2e", "zh"),
+    ("我们在东京的客户株式会社メルカリ正在招聘后端工程师，负责支付系统的开发和维护，远程工作，薪资面议", "zh"),
+    ("Backend developer, Яндекс, Python Go Kubernetes Docker Redis Kafka PostgreSQL remote", "en"),
 ])
 def test_a_few_foreign_words_do_not_change_the_language(text, lang):
     assert detect_lang(text) == lang
