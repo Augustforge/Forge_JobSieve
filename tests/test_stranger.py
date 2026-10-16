@@ -18,6 +18,9 @@ from vacancy_match.rank import rank
     ("resume-backend-EN.md", ("backend", "en")),
     ("resume-A-security-de.md", ("A-security", "de")),
     ("resume-data-AI.md", ("data-AI", "")),  # AI is not a language: it stays part of the track
+    ("resume-data-ML.md", ("data-ML", "")),  # Malayalam, Bislama, Croatian lose to common track names
+    ("resume-data-BI.md", ("data-BI", "")),
+    ("resume-ops-HR.md", ("ops-HR", "")),
     ("resume-backend.md", ("backend", "")),
 ])
 def test_any_language_code_is_a_language_not_a_track(name, expected):

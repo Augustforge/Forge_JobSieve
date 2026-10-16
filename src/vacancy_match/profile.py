@@ -8,13 +8,10 @@ from .models import ProfileChunk, detect_lang
 
 MIN_CHUNK = 40
 _LANG_SUFFIX = re.compile(r".-([A-Za-z]{2})$")
-# ISO 639-1: "resume-backend-ES" is Spanish, "resume-data-AI" is a track called data-AI
-_LANGS = set("aa ab af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de dv dz ee "
-             "el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig ii ik io "
-             "is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn "
-             "mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw sa sc sd se "
-             "sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo "
-             "wa wo xh yi yo za zh zu".split())
+# two-letter codes of languages resumes are written in: "resume-backend-ES" is Spanish, while "resume-data-AI",
+# "-ML", "-BI", "-HR" stay track names (Malayalam, Bislama and Croatian lose to them; IT is read as Italian)
+_LANGS = set("af am ar az be bg bn bs ca cs cy da de el en es et eu fa fi fr ga gl he hi hu hy id is it ja ka kk km "
+             "ko ky lt lv mk mn ms my nb nl no pl pt ro ru sk sl sq sr sv sw tg th tk tl tr uk ur uz vi zh".split())
 _BOLD_LINE = re.compile(r"\*\*[^*]+\*\*")
 
 

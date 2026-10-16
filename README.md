@@ -150,13 +150,14 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 1. **Resumes.** One Markdown file per direction you apply for, named `resume-<TRACK>-<LANG>.md`
    (`resume-backend-EN.md`, `resume-backend-ES.md`, `resume-data-DE.md`), all in one folder. `<LANG>` is a two-letter
    language code; the same direction in two languages is one track, so don't end a track name with a language code
-   (`resume-support-IT.md` reads as Italian). `index-profile` prints the tracks it found — check them. Each
+   (`resume-support-IT.md` reads as Italian; AI, ML, BI, HR stay part of the track name). `index-profile` prints the tracks it found — check them. Each
    `## Section` becomes a chunk, and inside a section a line that is bold as a whole (`**Order bot**`) starts a
    project chunk. Above the first `##` only `###` lines (your title) are kept, as a chunk named `header` — name and
    contacts are skipped. A file without `##` is indexed as one chunk, with a
    note. `index-profile` replaces the whole profile, so
    index the folder, not one file.
-2. **Your terms (optional).** Copy `examples/rules.example.yaml` and write your own salary curve, conditions, wishes
+2. **Your terms (optional).** Copy `examples/rules.example.yaml` to `private/my-rules.yaml` and write your own salary
+   curve, conditions, wishes
    and red lines. Skip it and the ranking is resume fit alone.
 3. **Vacancies.** `vm fetch` collects them from the boards' own public APIs — no scraping, no login — into JSONL,
    one run per file (see the table below). Any other source works too: JSONL with `source`, `url`, `title` and
@@ -167,7 +168,7 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 
 ```bash
 mkdir private                                      # git-ignored: resumes, rules, base and outputs stay yours
-export VM_DB=private/my.db VM_RULES=private/my-rules.yaml   # or pass --db / --rules
+export VM_DB=private/my.db VM_RULES=private/my-rules.yaml   # VM_RULES only if you wrote rules; or --db / --rules
 uv run vm index-profile private/resumes
 uv run vm fetch himalayas:python remoteok:python greenhouse:gitlab --where 'python|backend' --out private/run.jsonl
 uv run vm add private/run.jsonl                    # prints the run id fetch stamped: today's date
@@ -176,7 +177,7 @@ uv run vm calibrate                                # once you have 50+ vacancies
 uv run vm rank --run 2026-10-14 --out private/top.md   # the run id from the line above; top 50, --top N for more
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
 uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each
-uv run vm eval --rules my-rules.yaml               # after a few runs with real rejections
+uv run vm eval                                     # after a few runs with real rejections
 ```
 
 ### Where `vm fetch` collects from

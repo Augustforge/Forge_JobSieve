@@ -337,7 +337,7 @@ def cmd_funnel(args) -> int:
 
 WORKFLOW = """typical use:
   vm index-profile resumes/                       resume-<track>-<LANG>.md files, all of them at once
-  vm fetch remotive:python greenhouse:gitlab --where remote --out run.jsonl
+  vm fetch himalayas:python greenhouse:gitlab --where 'python|backend' --out run.jsonl
   vm add run.jsonl                                 into the base (vm.db, or --db / VM_DB)
   vm calibrate                                     once you have 50+ vacancies
   vm rank --run 2026-10-15 --rules my-rules.yaml --out top.md
