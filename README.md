@@ -32,14 +32,17 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
 4. **0–100.** Raw similarity lives in a band a few hundredths wide, where "a little lower" and "much lower" look the
    same. So it is mapped to 0–100 against all known vacancies: the median vacancy gets 50, the 10th and 90th
    percentiles land near 10 and 90. The scale is frozen per model, so a vacancy keeps its fit as the base grows;
-   `vm calibrate` re-measures it on purpose. Each language with 30+ vacancies gets a scale of its own:
-   the model places whole languages at different heights — against the same resumes Russian vacancies sat a full
-   scale-width above English ones — so one shared scale would rank a language down for being one. The language is
-   guessed without extra libraries: by script (Cyrillic, Chinese, Japanese, Korean, Arabic, …) and by frequent words
-   for Latin-script languages (English, Spanish, Portuguese, German, French, …). A language with fewer vacancies uses
-   the pooled scale until it grows; at 30 its fits move once, to its own scale, and stay there. The price: each
-   language's median vacancy gets 50, as if every language were equally relevant on average — true when you collect
-   by your own searches, not when you add a pile of random ones.
+   `vm calibrate` re-measures it on purpose.
+
+   **One scale for all languages, or one per language.** The model places whole languages at different heights:
+   against the same resumes, Russian vacancies sat a full scale-width above English ones. Part of that is the model,
+   part can be you — a candidate with weak spoken English really does fit English vacancies less often. So the
+   default is one scale, and `vm calibrate --per-language` gives each language with 30+ vacancies a scale of its own
+   (the language is guessed without extra libraries: by script, and by frequent words for Latin-script languages).
+   Once you have some fit/no_fit labels (`vm label`), measure before you switch: run `vm eval` after each
+   `vm calibrate` and keep the one with the higher AUC. On the author's base the shared scale won — AUC 0.59 against 0.34 on a run of 148 vacancies — because English roles there
+   were mostly ones the candidate could not take. Per-language scales suit a base where fits are spread evenly across
+   languages; they give each language's median vacancy 50 points, as if every language were equally relevant.
 
 ### Stage 2: score, the candidate's terms
 
@@ -158,6 +161,7 @@ uv run vm index-profile path/to/resumes
 uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
 uv run vm add run.jsonl                            # prints the run id fetch stamped: today's date
 uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
+uv run vm calibrate --per-language                 # optional: a scale per language — see Scoring, step 4
 uv run vm rank --run 2026-10-14 --out top.md       # the run id from the line above
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
 uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each

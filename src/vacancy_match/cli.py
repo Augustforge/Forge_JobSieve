@@ -45,20 +45,23 @@ MIN_FREEZE = 50  # a scale measured on fewer vacancies is used for this call but
 
 
 def frozen_scales(store: Store, model: str, vecs: dict, chunk_vecs: dict, langs: dict[str, str],
-                  refresh: bool = False) -> dict[str, tuple[float, float, int]]:
-    """The fit scales stored for this model — all vacancies pooled ("") and one per language — measured once and
-    kept: otherwise the same vacancy would get a different fit every time the base grows. Frozen on first use once the
-    base has MIN_FREEZE vacancies; a language gets its own scale once it has MIN_LANG_GROUP, until then it uses the
-    pooled one. `vm calibrate` (refresh) measures and stores them all on purpose. Values: (centre, width, n)."""
+                  refresh: bool = False, per_language: bool = False) -> dict[str, tuple[float, float, int]]:
+    """The fit scales stored for this model, measured once and kept: otherwise the same vacancy would get a different
+    fit every time the base grows. Frozen on first use once the base has MIN_FREEZE vacancies; `vm calibrate`
+    (refresh) measures and stores them on purpose. One scale for all vacancies ("") by default; with per_language
+    (`vm calibrate --per-language`) also one per language with MIN_LANG_GROUP+ vacancies, the smaller ones on the
+    pooled scale until they grow. Values: (centre, width, n)."""
     stored = {} if refresh else store.get_calibrations(model)
-    measured = profile_scales(vecs, chunk_vecs, langs, MIN_LANG_GROUP)
+    if not refresh:  # the choice lives in the base: a stored language scale means `vm calibrate --per-language`
+        per_language = any(lang for lang in stored)
+    measured = profile_scales(vecs, chunk_vecs, langs, MIN_LANG_GROUP if per_language else None)
     if "" not in stored:
         if measured and (refresh or measured[""][2] >= MIN_FREEZE):
             store.clear_calibrations(model)  # a language that shrank below MIN_LANG_GROUP goes back to the pooled scale
             for lang, snap in measured.items():
                 store.put_calibration(model, *snap, lang=lang)
         return measured
-    for lang, snap in measured.items():  # a language that grew big enough since: frozen now, the others stay put
+    for lang, snap in measured.items():  # per language: one that grew big enough is frozen now, the rest stay put
         if lang and lang not in stored:
             store.put_calibration(model, *snap, lang=lang)
             stored[lang] = snap
@@ -87,12 +90,15 @@ def cmd_calibrate(args) -> int:
     every = [v for v in store.vacancies() if len(v.text) >= MIN_TEXT]
     vecs = ensure_embeddings(store, embedder, "vacancy", {v.id: v.embed_text() for v in every}, "query")
     scales = frozen_scales(store, embedder.name, vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in every},
-                           refresh=True)
+                           refresh=True, per_language=args.per_language)
     print(f"fit scale for {embedder.name}:")
     for lang, (centre, width, n) in sorted(scales.items()):
         print(f"  {lang or 'all'}: centre {centre:.4f}, width {width:.4f}, measured on {n} vacancies")
-    if len(scales) == 1:
+    if args.per_language and len(scales) == 1:
         print(f"  (a language gets its own scale once it has {MIN_LANG_GROUP} vacancies)")
+    elif not args.per_language:
+        print("  one scale for every language; `vm calibrate --per-language` gives each language its own —"
+              " compare both with `vm eval`")
     n = scales[""][2] if scales else 0
     if n < MIN_FREEZE:
         _err(f"warning: {n} vacancies is a thin base for a scale; run `vm calibrate` again once you have {MIN_FREEZE}+")
@@ -363,6 +369,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=cmd_rank)
 
     cal = sub.add_parser("calibrate", help="measure the fit scale again on the whole base and freeze it")
+    cal.add_argument("--per-language", action="store_true",
+                     help=f"a scale of its own for each language with {MIN_LANG_GROUP}+ vacancies, kept until the "
+                          "next `vm calibrate` without this flag")
     cal.set_defaults(func=cmd_calibrate)
 
     lb = sub.add_parser("label", help="record fit/no_fit decisions")

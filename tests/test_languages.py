@@ -55,6 +55,20 @@ def test_a_language_that_is_systematically_less_similar_is_not_ranked_down():
     assert best["en"] == pytest.approx(best["ru"], abs=0.02)  # the top English vacancy is as good as the top Russian
 
 
+def test_one_scale_for_every_language_unless_asked():
+    chunk = ProfileChunk("c", "A", "en", "Projects", "python bots")
+    vacs, vecs = [], {}
+    for i, (text, sim) in enumerate([("Ищем разработчика ботов на Python", s) for s in np.linspace(0.92, 0.95, 31)] +
+                                    [("We need a developer for Python bots", s) for s in np.linspace(0.82, 0.85, 31)]):
+        v = Vacancy.from_dict({"source": "s", "url": f"x.com/{i}", "title": "T", "text": (text + " ") * 10,
+                               "run_id": "2026-10-16"})
+        vacs.append(v)
+        vecs[v.id] = unit(sim, np.sqrt(1 - sim ** 2))
+    out = rank(vacs, vecs, [chunk], {"c": unit(1.0, 0.0)})
+    best = {detect_lang(r.vacancy.text): r.fit for r in sorted(out, key=lambda r: r.profile_score)}
+    assert best["en"] < best["ru"] - 0.3  # a less similar language stays lower: for many people it is less fit
+
+
 def test_frozen_scales_are_kept_per_language(tmp_path):
     s = Store(tmp_path / "vm.db")
     s.put_calibration("m", 0.9, 0.01, 60, lang="ru")
@@ -81,12 +95,16 @@ def test_cli_ranks_and_calibrates_per_language(tmp_path, monkeypatch, capsys):
     main(db + ["index-profile", str(tmp_path / "p")])
     main(db + ["add", str(f)])
     capsys.readouterr()
-    assert main(db + ["rank", "--run", "2026-10-16"]) == 0
-    assert "fit scale per language: en 6, ru 6" in capsys.readouterr().out
-    assert set(Store(tmp_path / "vm.db").get_calibrations("hash-64")) == {"", "en", "ru"}
-    assert main(db + ["calibrate"]) == 0
+    assert main(db + ["rank", "--run", "2026-10-16"]) == 0  # one scale for every language unless asked
+    assert "fit scale from 12 vacancies" in capsys.readouterr().out
+    assert set(Store(tmp_path / "vm.db").get_calibrations("hash-64")) == {""}
+    assert main(db + ["calibrate", "--per-language"]) == 0
     out = capsys.readouterr().out
     assert "ru: centre" in out and "en: centre" in out
+    assert main(db + ["rank", "--run", "2026-10-16"]) == 0  # the choice is kept in the base, no flag needed
+    assert "fit scale per language: en 6, ru 6" in capsys.readouterr().out
+    assert main(db + ["calibrate"]) == 0  # and calibrating without the flag goes back to one scale
+    assert set(Store(tmp_path / "vm.db").get_calibrations("hash-64")) == {""}
 
 
 @pytest.mark.parametrize("text, lang", [
@@ -126,7 +144,7 @@ def test_calibrate_drops_the_scale_of_a_language_that_shrank(tmp_path, monkeypat
     s.put_calibration("m", 0.80, 0.02, 31, lang="es")
     langs = {f"ru{i}": "ru" for i in range(6)} | {f"es{i}": "es" for i in range(3)}
     vecs, chunks = _vectors(langs)
-    cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True)
+    cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True, per_language=True)
     assert set(s.get_calibrations("m")) == {"", "ru"}  # es is down to 3: back on the pooled scale
 
 

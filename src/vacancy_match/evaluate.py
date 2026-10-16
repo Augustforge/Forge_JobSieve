@@ -14,7 +14,7 @@ import numpy as np
 
 from .embed import ensure_embeddings
 from .models import Label, Vacancy, run_date
-from .rank import MIN_TEXT, Ranked, Reference, profile_scales, rank, vacancy_lang
+from .rank import MIN_TEXT, Ranked, Reference, profile_scales, rank
 from .rules import RuleSet
 
 
@@ -164,7 +164,7 @@ def evaluate(store, embedder, *, neighbor_weight: float = 0.0, hybrid_alpha: flo
     # one label-free set of scales for every run (the frozen ones, else measured on all vectors), so pooled AUC
     # compares like with like; per-run scales would map each run's median to 0.5
     scale = None if hybrid_alpha > 0 else (store.get_calibrations(embedder.name) or
-                                           profile_scales(vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in vacs}))
+                                           profile_scales(vecs, chunk_vecs, {}))
     runs, every, track_pairs = [], [], []
     rule_stats: dict[str, RuleStat] = {}
     for run in sorted({v.run_id for v in vacs}, key=lambda r: (run_date(r), r)):

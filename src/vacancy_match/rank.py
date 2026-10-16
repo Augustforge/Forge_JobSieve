@@ -66,18 +66,19 @@ def fit_scale(scores: np.ndarray) -> tuple[float, float]:
     return float(p50), float(p90 - p10) / (2 * math.log(9))
 
 
-MIN_LANG_GROUP = 30  # vacancies of one language needed for a scale of its own; fewer use the pooled scale
+MIN_LANG_GROUP = 30  # with per-language scales on: vacancies of one language needed for a scale of its own
 Scales = dict[str, tuple]  # language → (centre, width[, n]); "" is every vacancy pooled
 
 
-def language_scales(raw_by_lang: dict[str, list[float]], min_group: int = MIN_LANG_GROUP) -> dict[str, tuple]:
-    """{language: (centre, width, n)} for each language with min_group+ vacancies, plus "" for all of them pooled.
-    The model puts whole languages at different heights — against the same resumes Russian vacancies sat ~0.03 above
-    English ones, the full width of the scale — so one shared scale would rank a language down for being one."""
+def language_scales(raw_by_lang: dict[str, list[float]], min_group: int | None = None) -> dict[str, tuple]:
+    """{"": (centre, width, n)} for all vacancies pooled; with min_group, also one per language with min_group+.
+    Opt-in: the model puts whole languages at different heights (Russian vacancies sat ~0.03 above English ones
+    against the same resumes), but part of that gap can be real — a candidate with weak spoken English does fit
+    English vacancies less often — and equalising it ranked one such base worse (AUC 0.34 vs 0.59)."""
     every = [x for xs in raw_by_lang.values() for x in xs]
     out = {"": (*fit_scale(np.array(every)), len(every))} if every else {}
     for lang, xs in raw_by_lang.items():
-        if lang and len(xs) >= min_group:
+        if min_group and lang and len(xs) >= min_group:
             out[lang] = (*fit_scale(np.array(xs)), len(xs))
     return out
 
@@ -87,7 +88,7 @@ def vacancy_lang(v: Vacancy) -> str:
 
 
 def profile_scales(vectors: dict[str, np.ndarray], chunk_vectors: dict[str, np.ndarray], langs: dict[str, str],
-                   min_group: int = MIN_LANG_GROUP) -> dict[str, tuple]:
+                   min_group: int | None = None) -> dict[str, tuple]:
     """The fit scales measured on every known vacancy; langs maps vacancy id → language."""
     if not vectors or not chunk_vectors:
         return {}
@@ -115,9 +116,9 @@ def rank(vacancies: list[Vacancy], vectors: dict[str, np.ndarray], chunks: list[
          chunk_vectors: dict[str, np.ndarray], *, references: list[Reference] = (), neighbor_weight: float = 0.0,
          k_neighbors: int = 5, rules: RuleSet | None = None, today: date | None = None,
          hybrid_alpha: float = 0.0, dup_threshold: float = 0.95,
-         scale: Scales | None = None, min_lang_group: int = MIN_LANG_GROUP) -> list[Ranked]:
-    """scale: frozen fit scales per language (see language_scales); without it they are measured on this batch plus
-    the references."""
+         scale: Scales | None = None, min_lang_group: int | None = None) -> list[Ranked]:
+    """scale: frozen fit scales (see language_scales); without it they are measured on this batch plus the
+    references — one for every language, or per language with min_lang_group."""
     if not chunks:
         raise ValueError("profile is empty: run `vm index-profile` first")
     today = today or date.today()
