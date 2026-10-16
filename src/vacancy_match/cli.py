@@ -15,7 +15,7 @@ from .funnel import DEFAULT_WAIT, load_tracker, render_funnel
 from .labels import label_from_dict, load_label_file
 from .models import Vacancy, make_id, run_date
 from .profile import load_profile
-from .rank import MIN_TEXT, Reference, profile_scale, rank
+from .rank import MIN_LANG_GROUP, MIN_TEXT, Reference, profile_scales, rank, vacancy_lang
 from .report import render_top
 from .rules import RuleSet
 from .store import Store
@@ -44,17 +44,31 @@ def _floats(s: str) -> list[float]:
 MIN_FREEZE = 50  # a scale measured on fewer vacancies is used for this call but never stored
 
 
-def frozen_scale(store: Store, model: str, vecs: dict, chunk_vecs: dict,
-                 refresh: bool = False) -> tuple[float, float, int]:
-    """The fit scale stored for this model, measured once and kept: otherwise the same vacancy would get a different
-    fit every time the base grows. Frozen on first use once the base has MIN_FREEZE vacancies; `vm calibrate`
-    (refresh) measures and stores it on purpose. Returns (centre, width, vacancies it was measured on)."""
-    snap = None if refresh else store.get_calibration(model)
-    if snap is None:
-        snap = profile_scale(vecs, chunk_vecs)
-        if refresh or snap[2] >= MIN_FREEZE:
-            store.put_calibration(model, *snap)
-    return snap
+def frozen_scales(store: Store, model: str, vecs: dict, chunk_vecs: dict, langs: dict[str, str],
+                  refresh: bool = False) -> dict[str, tuple[float, float, int]]:
+    """The fit scales stored for this model — all vacancies pooled ("") and one per language — measured once and
+    kept: otherwise the same vacancy would get a different fit every time the base grows. Frozen on first use once the
+    base has MIN_FREEZE vacancies; a language gets its own scale once it has MIN_LANG_GROUP, until then it uses the
+    pooled one. `vm calibrate` (refresh) measures and stores them all on purpose. Values: (centre, width, n)."""
+    stored = {} if refresh else store.get_calibrations(model)
+    measured = profile_scales(vecs, chunk_vecs, langs, MIN_LANG_GROUP)
+    if "" not in stored:
+        if measured and (refresh or measured[""][2] >= MIN_FREEZE):
+            for lang, snap in measured.items():
+                store.put_calibration(model, *snap, lang=lang)
+        return measured
+    for lang, snap in measured.items():  # a language that grew big enough since: frozen now, the others stay put
+        if lang and lang not in stored:
+            store.put_calibration(model, *snap, lang=lang)
+            stored[lang] = snap
+    return stored
+
+
+def _scale_note(scales: dict) -> str:
+    per_lang = [f"{lang} {snap[2]}" for lang, snap in sorted(scales.items()) if lang]
+    if per_lang:
+        return f", fit scale per language: {', '.join(per_lang)}"
+    return f", fit scale from {scales[''][2]} vacancies" if scales else ""
 
 
 def cmd_calibrate(args) -> int:
@@ -69,10 +83,16 @@ def cmd_calibrate(args) -> int:
         _err(str(e))
         return 2
     chunk_vecs = ensure_embeddings(store, embedder, "profile_chunk", {c.id: c.text for c in chunks}, "passage")
-    vecs = ensure_embeddings(store, embedder, "vacancy",
-                             {v.id: v.embed_text() for v in store.vacancies() if len(v.text) >= MIN_TEXT}, "query")
-    centre, width, n = frozen_scale(store, embedder.name, vecs, chunk_vecs, refresh=True)
-    print(f"fit scale for {embedder.name}: centre {centre:.4f}, width {width:.4f}, measured on {n} vacancies")
+    every = [v for v in store.vacancies() if len(v.text) >= MIN_TEXT]
+    vecs = ensure_embeddings(store, embedder, "vacancy", {v.id: v.embed_text() for v in every}, "query")
+    scales = frozen_scales(store, embedder.name, vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in every},
+                           refresh=True)
+    print(f"fit scale for {embedder.name}:")
+    for lang, (centre, width, n) in sorted(scales.items()):
+        print(f"  {lang or 'all'}: centre {centre:.4f}, width {width:.4f}, measured on {n} vacancies")
+    if len(scales) == 1:
+        print(f"  (a language gets its own scale once it has {MIN_LANG_GROUP} vacancies)")
+    n = scales[""][2] if scales else 0
     if n < MIN_FREEZE:
         _err(f"warning: {n} vacancies is a thin base for a scale; run `vm calibrate` again once you have {MIN_FREEZE}+")
     return 0
@@ -161,7 +181,8 @@ def cmd_rank(args) -> int:
     every = store.vacancies()
     vecs = ensure_embeddings(store, embedder, "vacancy",
                              {v.id: v.embed_text() for v in every if len(v.text) >= MIN_TEXT}, "query")
-    snap = frozen_scale(store, embedder.name, vecs, chunk_vecs) if args.hybrid <= 0 else None
+    scales = (frozen_scales(store, embedder.name, vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in every})
+              if args.hybrid <= 0 else None)
     labels = store.effective_labels()
     refs = [Reference(v, vecs[v.id], labels.get(v.id)) for v in every if v.id in vecs]
     n_labeled = sum(1 for r in refs if r.label)
@@ -170,8 +191,8 @@ def cmd_rank(args) -> int:
     weight = args.neighbor_weight if n_labeled >= args.min_labels and n_no_fit >= args.min_no_fits else 0.0
     today = date.fromisoformat(args.today) if args.today else date.today()
     ranked = rank(run_vacs, vecs, chunks, chunk_vecs, references=refs, neighbor_weight=weight, k_neighbors=args.k,
-                  rules=rules, today=today, hybrid_alpha=args.hybrid, scale=snap[:2] if snap else None)
-    scale_note = f", fit scale from {snap[2]} vacancies" if snap else ", fit scale from this batch (hybrid)"
+                  rules=rules, today=today, hybrid_alpha=args.hybrid, scale=scales or None)
+    scale_note = _scale_note(scales) if scales else ", fit scale from this batch (hybrid)"
     md = render_top(ranked, args.top, title=f"Run {args.run}: {len(ranked)} vacancies, "
                                             f"neighbour weight {weight} ({n_labeled} labeled, {n_no_fit} no_fit)"
                                             + scale_note)

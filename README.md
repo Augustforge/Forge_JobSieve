@@ -32,8 +32,13 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
 4. **0–100.** Raw similarity lives in a band a few hundredths wide, where "a little lower" and "much lower" look the
    same. So it is mapped to 0–100 against all known vacancies: the median vacancy gets 50, the 10th and 90th
    percentiles land near 10 and 90. The scale is frozen per model, so a vacancy keeps its fit as the base grows;
-   `vm calibrate` re-measures it on purpose. The scale is shared by the whole base: in a base that is mostly English, every Russian
-   vacancy sits unusually close to a Russian resume, so keep one base per language mix you actually search in.
+   `vm calibrate` re-measures it on purpose. Each language with 30+ vacancies gets a scale of its own:
+   the model places whole languages at different heights — against the same resumes Russian vacancies sat a full
+   scale-width above English ones — so one shared scale would rank a language down for being one. The language is
+   guessed without extra libraries: by script (Cyrillic, Chinese, Japanese, Korean, Arabic, …) and by frequent words
+   for Latin-script languages (English, Spanish, Portuguese, German, French, …). A language with fewer vacancies uses
+   the pooled scale until it grows. The price: each language's median vacancy gets 50, as if every language were
+   equally relevant on average — true when you collect by your own searches, not when you add a pile of random ones.
 
 ### Stage 2: score, the candidate's terms
 

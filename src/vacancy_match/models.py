@@ -70,12 +70,42 @@ def make_id(url: str) -> str:
     return hashlib.sha1(normalize_url(url).encode("utf-8")).hexdigest()[:16]
 
 
+# scripts that name their language; Cyrillic is labelled "ru" (also Ukrainian, Kazakh \u2014 one scale fits them)
+_SCRIPTS = [("ja", "\u3040", "\u30ff"), ("ko", "\uac00", "\ud7af"), ("zh", "\u4e00", "\u9fff"), ("ru", "\u0400", "\u04ff"),
+            ("ar", "\u0600", "\u06ff"), ("he", "\u0590", "\u05ff"), ("el", "\u0370", "\u03ff"), ("th", "\u0e00", "\u0e7f"),
+            ("hi", "\u0900", "\u097f")]
+# Latin-script languages tell themselves apart by their most frequent short words
+_STOPWORDS = {
+    "en": "the and for with you our are will to of in is a this that we on as be",
+    "es": "el la los las de que y para con en un una por del se es al lo nuestro",
+    "pt": "o a os as de que e para com em um uma por do da dos n\u00e3o \u00e9 nossa",
+    "de": "der die das und f\u00fcr mit ist wir sie ein eine den zu von auf im nicht unser",
+    "fr": "le la les et pour avec des un une en du est nous vous dans sur au pas",
+    "it": "il la di che e per con un una del della \u00e8 sono nel al gli le",
+    "nl": "de het een en van voor met is wij je op te in zijn niet ons",
+    "pl": "i w na z do jest si\u0119 dla nie \u017ce oraz to od po jak",
+    "tr": "ve bir i\u00e7in ile bu da de olarak en \u00e7ok olan biz",
+}
+_STOPWORD_SETS = {lang: set(words.split()) for lang, words in _STOPWORDS.items()}
+_WORD = re.compile(r"[^\W\d_]+")
+
+
 def detect_lang(text: str) -> str:
+    """A two-letter guess, no dependencies: by script, then by frequent words for Latin script; "" without letters.
+    It only has to be consistent \u2014 vacancies in one language share one fit scale."""
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return ""
-    cyrillic = sum(1 for c in letters if "\u0400" <= c <= "\u04ff")
-    return "ru" if cyrillic / len(letters) > 0.3 else "en"
+    counts = {lang: sum(1 for c in letters if lo <= c <= hi) for lang, lo, hi in _SCRIPTS}
+    if counts["ja"]:  # kana is only Japanese; kanji alone would read as Chinese
+        return "ja"
+    script, n = max(counts.items(), key=lambda kv: kv[1])
+    if n / len(letters) > 0.3:
+        return script
+    words = [w.lower() for w in _WORD.findall(text)]
+    votes = {lang: sum(w in stop for w in words) for lang, stop in _STOPWORD_SETS.items()}
+    best = max(votes, key=votes.get)
+    return best if votes[best] else "en"
 
 
 def now_iso() -> str:

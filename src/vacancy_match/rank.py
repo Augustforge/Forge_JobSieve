@@ -10,7 +10,7 @@ import numpy as np
 
 from .bm25 import bm25_matrix
 from .embed import tokenize
-from .models import Label, ProfileChunk, Vacancy, run_date
+from .models import Label, ProfileChunk, Vacancy, detect_lang, run_date
 from .rules import Adjustment, Check, RuleSet
 
 MIN_TEXT = 200
@@ -66,12 +66,37 @@ def fit_scale(scores: np.ndarray) -> tuple[float, float]:
     return float(p50), float(p90 - p10) / (2 * math.log(9))
 
 
-def profile_scale(vectors: dict[str, np.ndarray], chunk_vectors: dict[str, np.ndarray]) -> tuple[float, float, int]:
-    """The fit scale measured on every known vacancy: (centre, width, how many vacancies it was measured on)."""
+MIN_LANG_GROUP = 30  # vacancies of one language needed for a scale of its own; fewer use the pooled scale
+Scales = dict[str, tuple]  # language → (centre, width[, n]); "" is every vacancy pooled
+
+
+def language_scales(raw_by_lang: dict[str, list[float]], min_group: int = MIN_LANG_GROUP) -> dict[str, tuple]:
+    """{language: (centre, width, n)} for each language with min_group+ vacancies, plus "" for all of them pooled.
+    The model puts whole languages at different heights — against the same resumes Russian vacancies sat ~0.03 above
+    English ones, the full width of the scale — so one shared scale would rank a language down for being one."""
+    every = [x for xs in raw_by_lang.values() for x in xs]
+    out = {"": (*fit_scale(np.array(every)), len(every))} if every else {}
+    for lang, xs in raw_by_lang.items():
+        if lang and len(xs) >= min_group:
+            out[lang] = (*fit_scale(np.array(xs)), len(xs))
+    return out
+
+
+def vacancy_lang(v: Vacancy) -> str:
+    return detect_lang(f"{v.title}\n{v.text}")
+
+
+def profile_scales(vectors: dict[str, np.ndarray], chunk_vectors: dict[str, np.ndarray], langs: dict[str, str],
+                   min_group: int = MIN_LANG_GROUP) -> dict[str, tuple]:
+    """The fit scales measured on every known vacancy; langs maps vacancy id → language."""
     if not vectors or not chunk_vectors:
-        return 0.0, 0.0, 0
-    scores = (np.stack(list(vectors.values())) @ np.stack(list(chunk_vectors.values())).T).max(axis=1)
-    return (*fit_scale(scores), len(scores))
+        return {}
+    ids = list(vectors)
+    best = (np.stack([vectors[i] for i in ids]) @ np.stack(list(chunk_vectors.values())).T).max(axis=1)
+    groups: dict[str, list[float]] = {}
+    for i, x in zip(ids, best):
+        groups.setdefault(langs.get(i, ""), []).append(float(x))
+    return language_scales(groups, min_group)
 
 
 def to_fit(x: float, centre: float, width: float) -> float:
@@ -90,8 +115,9 @@ def rank(vacancies: list[Vacancy], vectors: dict[str, np.ndarray], chunks: list[
          chunk_vectors: dict[str, np.ndarray], *, references: list[Reference] = (), neighbor_weight: float = 0.0,
          k_neighbors: int = 5, rules: RuleSet | None = None, today: date | None = None,
          hybrid_alpha: float = 0.0, dup_threshold: float = 0.95,
-         scale: tuple[float, float] | None = None) -> list[Ranked]:
-    """scale: a frozen (centre, width) for the fit; without it the scale is measured on this batch plus references."""
+         scale: Scales | None = None, min_lang_group: int = MIN_LANG_GROUP) -> list[Ranked]:
+    """scale: frozen fit scales per language (see language_scales); without it they are measured on this batch plus
+    the references."""
     if not chunks:
         raise ValueError("profile is empty: run `vm index-profile` first")
     today = today or date.today()
@@ -113,12 +139,19 @@ def rank(vacancies: list[Vacancy], vectors: dict[str, np.ndarray], chunks: list[
         L = np.stack([r.vector for r in labeled]) if labeled else None
         R = np.stack([r.vector for r in references]) if references else None
         # calibrate on the scale the fit is computed on: with the hybrid bonus only this batch has that scale
+        langs = {v.id: vacancy_lang(v) for v in scored}
         known = {v.id: float(s) for v, s in zip(scored, S.max(axis=1))}
         if R is not None and hybrid_alpha <= 0:
             ref_raw = (R @ C.T).max(axis=1)
             for j, ref in enumerate(references):
-                known.setdefault(ref.vacancy.id, float(ref_raw[j]))
-        centre, width = scale if scale else fit_scale(np.array(list(known.values())))
+                if ref.vacancy.id not in known:
+                    known[ref.vacancy.id] = float(ref_raw[j])
+                    langs[ref.vacancy.id] = vacancy_lang(ref.vacancy)
+        if not scale:
+            groups: dict[str, list[float]] = {}
+            for vid, x in known.items():
+                groups.setdefault(langs[vid], []).append(x)
+            scale = language_scales(groups, min_lang_group)
 
         for i, v in enumerate(scored):
             row = S[i]
@@ -162,6 +195,7 @@ def rank(vacancies: list[Vacancy], vectors: dict[str, np.ndarray], chunks: list[
             check = rules.check(v, today) if rules else Check()
             # the vote moves the calibrated fit, not raw cosine: 0.15 raw is ~12 calibration widths and saturates it
             # not clipped at 1: a cap would tie every top vacancy and erase its stage-1 order
+            centre, width = scale.get(langs[v.id], scale[""])[:2]
             fit = max(0.0, to_fit(profile_score, centre, width) + neighbor_weight * vote)
             score = fit * check.factor - (CUT_OFFSET if check.cut else 0.0)
             out.append(Ranked(v, score, profile_score, track, top, neighbors, check.flags, check.cut, duplicate_of,

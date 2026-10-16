@@ -99,15 +99,21 @@ class Store:
                if hashes is None or hashes.get(oid) == h}
         return out if ids is None else {i: out[i] for i in ids if i in out}
 
-    # calibration: the frozen fit scale per model
+    # calibration: the frozen fit scales per model — "model" for all vacancies pooled, "model|lang" per language
     def get_calibration(self, model: str) -> tuple[float, float, int] | None:
-        row = self.db.execute("SELECT centre, width, n FROM calibration WHERE model = ?", (model,)).fetchone()
-        return (row[0], row[1], row[2]) if row else None
+        return self.get_calibrations(model).get("")
 
-    def put_calibration(self, model: str, centre: float, width: float, n: int) -> None:
+    def get_calibrations(self, model: str) -> dict[str, tuple[float, float, int]]:
+        prefix = f"{model}|"  # not LIKE: "_" in a model name would be a wildcard
+        rows = self.db.execute("SELECT model, centre, width, n FROM calibration WHERE model = ? OR substr(model, 1, ?) = ?",
+                               (model, len(prefix), prefix)).fetchall()
+        return {key.partition("|")[2]: (centre, width, n) for key, centre, width, n in rows}
+
+    def put_calibration(self, model: str, centre: float, width: float, n: int, lang: str = "") -> None:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO calibration VALUES (?, ?, ?, ?, ?)",
-                            (model, centre, width, n, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                            (f"{model}|{lang}" if lang else model, centre, width, n,
+                             datetime.now(timezone.utc).isoformat(timespec="seconds")))
 
     # profile
     def replace_profile(self, chunks: list[ProfileChunk]) -> None:

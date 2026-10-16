@@ -167,5 +167,5 @@ def test_positive_vote_does_not_flatten_the_top():
 def test_given_scale_is_used_as_is():
     from vacancy_match.rank import to_fit
     bot = vac(1, "python telegram bots api")
-    r = rank([bot], vecs([bot]), CHUNKS, CHUNK_VECS, scale=(0.1, 0.05))[0]
+    r = rank([bot], vecs([bot]), CHUNKS, CHUNK_VECS, scale={"": (0.1, 0.05)})[0]
     assert r.fit == pytest.approx(to_fit(r.profile_score, 0.1, 0.05)) and r.fit != 0.5
