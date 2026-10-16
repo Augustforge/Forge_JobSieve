@@ -11,4 +11,5 @@ dist/
 *.csv
 !examples/*.csv
 top.md
+private/
 funnel.md

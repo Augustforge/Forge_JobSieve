@@ -68,6 +68,7 @@ def test_label_single_and_batch(env, capsys):
 def test_label_file_bad_line_stores_nothing(env, capsys):
     tmp, base = env
     batch = tmp / "labels.jsonl"
+    Store(tmp / "vm.db").close()
     batch.write_text('{"url": "x.com/1", "label": "fit"}\n{"url": "x.com/2", "label": "perhaps"}\n',
                      encoding="utf-8")
     assert main(base + ["label", "--file", str(batch)]) == 1

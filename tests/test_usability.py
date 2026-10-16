@@ -158,6 +158,7 @@ def test_labels_are_yours_by_default_and_reasons_are_your_words():
 
 def test_cli_label_defaults_to_human(tmp_path):
     db = str(tmp_path / "vm.db")
+    Store(db).close()
     assert main(["--db", db, "label", "x.com/1", "fit"]) == 0
     assert [l.actor for l in Store(db).labels()] == ["human"]
 

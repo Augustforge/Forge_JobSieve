@@ -230,7 +230,8 @@ def render_eval(results: list[EvalResult]) -> str:
               f"{_f(m.r20)} | {_f(m.auc)} | {_f(m.ap)} |" for m in best.runs]
     for title, items in (("High score but no_fit", best.false_pos), ("Low score but fit", best.false_neg)):
         lines += ["", f"## {title}", ""]
-        lines += [f"- {r.score:.3f} {r.vacancy.title} — {r.vacancy.company} ({r.track or 'no track'})" for r in items]
+        lines += [f"- score {100 * r.score:.0f} · {r.vacancy.title} — {r.vacancy.company} ({r.track or 'no track'})"
+                  for r in items]
     ruled = next((r for r in results if r.rule_stats), None)
     if ruled:
         fits = sum(m.positives for m in ruled.runs)

@@ -109,13 +109,15 @@ any rule can set its own, e.g. `office: {patterns: ['office'], factor: 0.7}`.
 - **The salary curve** is written in your own currency and period: `currency: EUR`, `period: year`,
   `curve: {60000: 1.0, 48000: 0.5}`. `rates` say how many USD one unit of a currency is worth (`EUR: 1.08`,
   `KZT: 0.002`) — list every currency vacancies may be paid in, USD is always 1; a rate written the other way round
-  (`KZT: 450`) is refused. Cards show the salary converted to USD a month.
+  (`KZT: 450`) is refused. Cards show the salary as the vacancy writes it; the `Adjusted:` line shows the figure
+  the curve read, in USD a month.
 
 - **Why a condition halves instead of cutting:** a regex misreads ("German is a plus"), so a serious miss costs half
   and a near-perfect vacancy still surfaces with the reason next to it. Cuts are for what is never worth reading.
 - **Salary:** a range counts at its middle (1000–1400 → 1200). Part-time is read from the title, the work format
   and the salary line — a body says "this is not part-time" as often as "part-time". Its pay is scaled to full time
-  when the hours are stated anywhere (20 h/week at $900 ≈ $1660 full time); without hours it is only flagged. Hourly
+  when the hours are stated anywhere (20 h/week at $900 ≈ $1660 full time); without hours it is flagged
+  (`part_time_pay`) and not judged. Hourly
   pay counts 160 hours a month. A figure with no period that would be over $15,000 a month is read as a yearly salary:
   US and EU boards rarely write "per year". Pay per project is flagged, not judged against a monthly floor. An
   unknown salary, or a currency missing from `rates:`, is flagged (`no_salary`), never penalised: ask.
@@ -125,7 +127,10 @@ any rule can set its own, e.g. `office: {patterns: ['office'], factor: 0.7}`.
 ## Quick start
 
 Needs [uv](https://docs.astral.sh/uv/); it fetches Python 3.13 itself. About 2 GB of disk: the environment with
-PyTorch is ~0.8 GB, the default model ~1 GB downloads on first use and is read from the cache after that. No API key.
+PyTorch is ~0.8 GB, the default model 1.1 GB downloads on first use (15+ minutes on a slow line, with no progress
+bar) and is read from the cache after that. No API key: Hugging Face prints a warning about `HF_TOKEN`, it is not
+needed. For a lighter start add `--model intfloat/multilingual-e5-small` (~0.5 GB, a little less accurate) to every
+command — `--model` is a global option, and one base should stay on one model.
 On Windows the commands are the same in PowerShell; set variables with `$env:VM_DB = "my.db"` instead of `export`.
 
 ```bash
@@ -143,9 +148,12 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 ## Use it on your own search
 
 1. **Resumes.** One Markdown file per direction you apply for, named `resume-<TRACK>-<LANG>.md`
-   (`resume-backend-EN.md`, `resume-data-RU.md`), all in one folder. Each `## Section` becomes a chunk, and inside a
-   section a line that is bold as a whole (`**Order bot**`) starts a project chunk. Above the first `##` only `###`
-   lines (your title) are kept — name and contacts are skipped. A file without `##` is indexed as one chunk, with a
+   (`resume-backend-EN.md`, `resume-backend-ES.md`, `resume-data-DE.md`), all in one folder. `<LANG>` is a two-letter
+   language code; the same direction in two languages is one track, so don't end a track name with a language code
+   (`resume-support-IT.md` reads as Italian). `index-profile` prints the tracks it found — check them. Each
+   `## Section` becomes a chunk, and inside a section a line that is bold as a whole (`**Order bot**`) starts a
+   project chunk. Above the first `##` only `###` lines (your title) are kept, as a chunk named `header` — name and
+   contacts are skipped. A file without `##` is indexed as one chunk, with a
    note. `index-profile` replaces the whole profile, so
    index the folder, not one file.
 2. **Your terms (optional).** Copy `examples/rules.example.yaml` and write your own salary curve, conditions, wishes
@@ -158,13 +166,14 @@ uv run vm funnel examples/tracker.example.csv --today 2026-10-15 --wait-channel 
 4. **Run it:**
 
 ```bash
-export VM_DB=my.db VM_RULES=my-rules.yaml          # or pass --db / --rules
-uv run vm index-profile path/to/resumes
-uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
-uv run vm add run.jsonl                            # prints the run id fetch stamped: today's date
+mkdir private                                      # git-ignored: resumes, rules, base and outputs stay yours
+export VM_DB=private/my.db VM_RULES=private/my-rules.yaml   # or pass --db / --rules
+uv run vm index-profile private/resumes
+uv run vm fetch himalayas:python remoteok:python greenhouse:gitlab --where 'python|backend' --out private/run.jsonl
+uv run vm add private/run.jsonl                    # prints the run id fetch stamped: today's date
 uv run vm calibrate                                # once you have 50+ vacancies (add --per-language if you chose it)
-# uv run vm calibrate --per-language               # optional, only after comparing with vm eval — Scoring, step 4
-uv run vm rank --run 2026-10-14 --out top.md       # the run id from the line above
+# uv run vm calibrate --per-language               # optional, compare with vm eval first: How the score works, 4
+uv run vm rank --run 2026-10-14 --out private/top.md   # the run id from the line above; top 50, --top N for more
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
 uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each
 uv run vm eval --rules my-rules.yaml               # after a few runs with real rejections
@@ -177,14 +186,16 @@ uv run vm eval --rules my-rules.yaml               # after a few runs with real 
 | `greenhouse:<board>` | one company's open jobs on Greenhouse | the name in `job-boards.greenhouse.io/<board>` |
 | `lever:<company>` | one company's open jobs on Lever | the name in `jobs.lever.co/<company>` |
 | `ashby:<org>` | one company's open jobs on Ashby | the name in `jobs.ashbyhq.com/<org>` |
-| `remotive:<search>` | remote jobs, Remotive | a search, e.g. `python` |
+| `remotive:<search>` | remote jobs, Remotive | a search, e.g. `python` — the free API returns the same small sample whatever the search |
 | `remoteok[:<tag>]` | remote jobs, Remote OK | optional tag, e.g. `python` |
 | `himalayas:<search>` | remote jobs, Himalayas | a search |
 | `arbeitnow` | jobs in Germany and remote, Arbeitnow | — |
 | `hh:<search>` | HeadHunter (hh.ru, hh.kz, …) | needs `HH_TOKEN`: since 2026 the hh API answers only registered apps ([dev.hh.ru](https://dev.hh.ru)) |
 | `page:<url>` | one vacancy page you found yourself | any page with schema.org `JobPosting` markup — hh vacancy pages have it, no token needed |
 
-`--where REGEX` keeps jobs whose title, location or work format match (`--where remote`). A source that fails
+`--where REGEX` keeps jobs whose title, location or work format match, ignoring case. Filter by title
+(`--where 'python|backend'`): aggregators write the location as "Worldwide" or a region, not "remote", and their
+searches are loose — Remote OK's `python` tag returns store managers too. A source that fails
 (a typo in a board name, no network) is reported and the others are still collected. Every record keeps the job's
 own URL and its source: the aggregators ask you to link back and credit them if you republish their jobs, and
 Remotive asks for no more than a few requests a day.
@@ -239,7 +250,10 @@ for several models and settings at once, each with and without stage 2:
 - **AP** rewards fits near the top. **np@k** (hits / min(k, fits)) and **recall@k** are shown only for runs larger
   than k: inside k every ordering scores the same. Raw precision@k on small runs mostly measures the share of fits.
 - **Pooled AUC with a bootstrap 95% interval** — read the interval before the number.
-- **Track accuracy**, the worst misses both ways, and the per-rule report.
+- **Track accuracy**, the worst misses both ways (with their score, 0–100 as in `vm rank`), and the per-rule report.
+
+With a couple of dozen labels the interval is wide (0.5–0.95 is common): two settings whose intervals overlap are
+not yet different. Comparing one scale with per-language scales takes labels in each language you rank.
 
 It counts your own decisions by default: an agent's labels would only measure the system agreeing with itself
 (`--labels all` includes them).
@@ -269,7 +283,7 @@ Models only really differ on real, mostly non-English vacancies; the synthetic s
 ## Privacy
 
 Nothing about a particular person is in the code: resumes, terms, vacancies, labels and the tracker are your files,
-kept outside the repo. Data files are git-ignored, and `scripts/privacy_check.py` fails CI on real emails, phone
+kept outside the repo or in `private/`, which git ignores. Data files are git-ignored too, and `scripts/privacy_check.py` fails CI on real emails, phone
 numbers and Telegram handles. `scripts/install-hooks.sh` adds the same check as a pre-commit hook, extended with your
 own list of exact private strings kept outside the repo.
 

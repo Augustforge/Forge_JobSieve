@@ -162,7 +162,7 @@ def rank(vacancies: list[Vacancy], vectors: dict[str, np.ndarray], chunks: list[
             track = max(best_by_track, key=best_by_track.get)
             profile_score = best_by_track[track]
             top = [ChunkMatch(chunks[j].id, chunks[j].track, chunks[j].section, float(row[j]))
-                   for j in np.argsort(-row)[:2]]
+                   for j in np.argsort(-row) if chunks[j].track == track][:2]
 
             neighbors: list[Neighbor] = []
             vote = 0.0

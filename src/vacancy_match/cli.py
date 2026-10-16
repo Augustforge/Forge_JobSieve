@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -87,14 +88,16 @@ def cmd_calibrate(args) -> int:
     chunk_vecs = ensure_embeddings(store, embedder, "profile_chunk", {c.id: c.text for c in chunks}, "passage")
     every = [v for v in store.vacancies() if len(v.text) >= MIN_TEXT]
     vecs = ensure_embeddings(store, embedder, "vacancy", {v.id: v.embed_text() for v in every}, "query")
+    langs = {v.id: vacancy_lang(v) for v in every}
     store.set_per_language(args.per_language)
-    scales = frozen_scales(store, embedder.name, vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in every},
-                           refresh=True)
+    scales = frozen_scales(store, embedder.name, vecs, chunk_vecs, langs, refresh=True)
     print(f"fit scale for {embedder.name}:")
     for lang, (centre, width, n) in sorted(scales.items()):
         print(f"  {lang or 'all'}: centre {centre:.4f}, width {width:.4f}, measured on {n} vacancies")
-    if args.per_language and len(scales) == 1:
-        print(f"  (a language gets its own scale once it has {MIN_LANG_GROUP} vacancies)")
+    small = Counter(lang for vid, lang in langs.items() if vid in vecs and lang and lang not in scales)
+    if args.per_language and small:
+        print(f"  on the shared scale until they have {MIN_LANG_GROUP}: "
+              + ", ".join(f"{lang} {n}" for lang, n in sorted(small.items())))
     elif not args.per_language:
         print("  one scale for every language; `vm calibrate --per-language` gives each language its own —"
               " compare both with `vm eval` once you have fit and no_fit labels")
@@ -165,15 +168,16 @@ def cmd_index_profile(args) -> int:
 
 def cmd_rank(args) -> int:
     store = Store(args.db)
-    run_vacs = store.vacancies(args.run)
-    if not run_vacs:
-        print(f"no vacancies for run {args.run}")
-        return 1
     try:
         rules = RuleSet.load(args.rules) if args.rules else None  # a typo must not cost a model load first
     except ValueError as e:
         _err(str(e))
         return 2
+    run_vacs = store.vacancies(args.run)
+    if not run_vacs:
+        runs = sorted({v.run_id for v in store.vacancies()}, key=lambda r: (run_date(r), r))
+        print(f"no vacancies for run {args.run}" + (f"; runs in this base: {', '.join(runs[-5:])}" if runs else ""))
+        return 1
     chunks = store.profile_chunks()
     if not chunks:
         _err("profile is empty: run `vm index-profile` first")
@@ -225,9 +229,15 @@ def cmd_label(args) -> int:
     except ValueError as e:
         _err(f"nothing stored: {e}")
         return 1
+    tracks = {c.track for c in store.profile_chunks()}
+    wrong = sorted({l.track for l in labels if l.track and tracks and l.track not in tracks})
+    if wrong:  # a typo would quietly replace a correct label
+        _err(f"nothing stored: unknown track {', '.join(wrong)}; the profile has {', '.join(sorted(tracks))}")
+        return 1
     unknown = sum(1 for l in labels if store.get_vacancy(l.vacancy_id) is None)
     store.add_labels(labels)
-    print(f"stored {len(labels)} labels" + (f", {unknown} for vacancies not in the store yet" if unknown else ""))
+    print(f"stored {len(labels)} label{'' if len(labels) == 1 else 's'}"
+          + (f", {unknown} for vacancies not in the store yet" if unknown else ""))
     return 0
 
 
@@ -357,14 +367,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("rank", help="rank one run and print or write the Markdown top")
     r.add_argument("--run", required=True)
-    r.add_argument("--top", type=int, default=50)
+    r.add_argument("--top", type=int, default=50, help="how many vacancies the Markdown top shows (default 50)")
     r.add_argument("--out", default="")
     r.add_argument("--rules", default=os.environ.get("VM_RULES", ""))
-    r.add_argument("--neighbor-weight", type=float, default=0.15)
+    r.add_argument("--neighbor-weight", type=float, default=0.15,
+                   help="how far labeled neighbours move the fit, once there are --min-labels labels")
     r.add_argument("--min-labels", type=int, default=100)
     r.add_argument("--min-no-fits", type=int, default=20)
-    r.add_argument("--k", type=int, default=5)
-    r.add_argument("--hybrid", type=float, default=0.0)
+    r.add_argument("--k", type=int, default=5, help="labeled neighbours shown and voting per vacancy")
+    r.add_argument("--hybrid", type=float, default=0.0,
+                   help="weight of a keyword (BM25) bonus on top of embeddings; 0 = off, compare with vm eval")
     r.add_argument("--today", default="")
     r.set_defaults(func=cmd_rank)
 
@@ -418,6 +430,9 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     args = build_parser().parse_args(argv)
+    if args.func in (cmd_rank, cmd_calibrate, cmd_label, cmd_eval) and not Path(args.db).exists():
+        _err(f"no database at {args.db}: `vm add` or `vm index-profile` creates it — check --db / VM_DB")
+        return 1
     return args.func(args)
 
 

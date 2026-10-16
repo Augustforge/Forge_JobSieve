@@ -108,7 +108,10 @@ def _date(row: dict, field: str) -> date | None:
     if DOTTED.fullmatch(value):  # Excel in many locales writes 05.10.2026
         day, month, year = value.split(".")
         return date(int(year), int(month), int(day))
-    return date.fromisoformat(value)
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"{field} {value!r} is not a date: write 2026-10-05 or 05.10.2026") from None
 
 
 def load_tracker(path: str | Path) -> tuple[list[Application], list[str]]:

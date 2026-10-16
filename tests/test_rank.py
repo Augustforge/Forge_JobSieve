@@ -39,7 +39,7 @@ def test_orders_by_profile_and_picks_track_with_explanation():
     by_id = {r.vacancy.id: r for r in out}
     assert by_id[bot.id].track == "A" and by_id[designer.id].track == "B"
     assert by_id[bot.id].top_chunks[0].section == "Projects: bots"
-    assert len(by_id[bot.id].top_chunks) == 2
+    assert len(by_id[bot.id].top_chunks) == 1  # track A has one chunk; another track's chunk would mislead
 
 
 def test_short_text_goes_to_bottom_with_flag():
