@@ -187,3 +187,11 @@ def test_page_reads_one_vacancy_you_found_yourself():
 def test_search_sources_need_a_query(source):
     _, errors = collect([source], get=fake_get)
     assert errors and "needs" in errors[0]
+
+
+def test_remoteok_location_is_repaired_like_the_title():
+    garbled = "دبي, الإمارات".encode("utf-8").decode("latin-1")  # how Remote OK sends it
+    job = {"position": "Analyst", "company": "X", "url": "https://remoteOK.com/remote-jobs/9", "description": "<p>A</p>",
+           "location": garbled, "date": "2026-10-12T00:00:00+00:00", "salary_min": 0, "salary_max": 0}
+    [rec] = collect(["remoteok:x"], get=lambda url: [{"legal": "terms"}, job])[0]
+    assert rec["location"] == "دبي, الإمارات"

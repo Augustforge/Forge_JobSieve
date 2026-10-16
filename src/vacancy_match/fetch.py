@@ -149,7 +149,7 @@ def _remoteok(tag, get):
                     _range("USD", j.get("salary_min"), j.get("salary_max"),
                            "per hour" if max(j.get("salary_min") or 0, j.get("salary_max") or 0) < HOURLY_BELOW
                            else "per year"), j.get("date", ""), "",
-                    j.get("location", ""))
+                    _demojibake(j.get("location", "")))
             for j in jobs if "position" in j]  # the first element is the terms of use
 
 
