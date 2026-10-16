@@ -1,8 +1,22 @@
-# vacancy-match
+# JobSieve
+
+**Rank job postings by whether you'd actually take them, not just by how much they look like your resume.**
 
 Collect vacancies from public job APIs, rank them against your resumes, then apply your own terms — deal-breakers,
 wishes, salary floor, red lines — as a second, explained stage. Learn from every fit / no-fit decision, see what
 happens after you apply, and measure all of it on real decisions instead of eyeballing.
+
+> **Status: done.** It runs my own job search. Use it as is, or fork it and bend it to yours; no further development
+> is planned.
+
+## Why
+
+I built it for my own search. The first version was the obvious one: embed the resume, embed each vacancy, sort by
+similarity on a 0–100 scale. It kept missing jobs I wanted and surfacing ones I would never take — roles that matched
+my skills on paper and failed on pay, format, hours or plain honesty. Two changes fixed most of it: matching against
+resume chunks instead of the whole resume, and a second stage that applies my own terms and says why.
+
+The architecture, the calls and the mistakes are mine. AI did the typing.
 
 ```
 ## 4. Python Developer (client-facing) — CallStack
@@ -14,6 +28,15 @@ happens after you apply, and measure all of it on real decisions instead of eyeb
 
 The vacancy matches the resume (fit 60), but it needs fluent German, which this candidate does not speak. The score
 halves and the job drops below the ones they would actually take. Every number on the card says where it came from.
+
+## What it is not
+
+- **Not an auto-apply bot.** It ranks and explains; you decide and send.
+- **Not a scraper.** Vacancies come from the boards' own public APIs or pages you open yourself. No logins.
+- **Not a cloud service.** The model runs locally on CPU with no API key; resumes, terms and decisions stay in files
+  on your machine.
+- **Not right on day one.** Stage 2 is only as good as your terms, and the numbers only as good as your labels — see
+  [On a real search](#on-a-real-search).
 
 ## How the score works
 
@@ -36,12 +59,12 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
 
    **One scale for all languages, or one per language.** The model places whole languages at different heights:
    against the same resumes, Russian vacancies sat a full scale-width above English ones. Part of that is the model,
-   part can be you — a candidate with weak spoken English really does fit English vacancies less often. So the
+   part can be you — a candidate who can't work in a language really does fit vacancies in it less often. So the
    default is one scale, and `vm calibrate --per-language` gives each language with 30+ vacancies a scale of its own
    (the language is guessed without extra libraries: by script, and by frequent words for Latin-script languages).
    Once you have some fit/no_fit labels (`vm label`), measure before you switch: run `vm eval` after each
-   `vm calibrate` and keep the one with the higher AUC. On the author's base the shared scale won — AUC 0.59 against 0.34 on a run of 148 vacancies — because English roles there
-   were mostly ones the candidate could not take. Per-language scales suit a base where fits are spread evenly across
+   `vm calibrate` and keep the one with the higher AUC. On a real base the shared scale won — AUC 0.59 against 0.34 on a run of 148 vacancies — because the roles in one
+   language there were mostly ones the candidate could not take. Per-language scales suit a base where fits are spread evenly across
    languages; they give each language's median vacancy 50 points, as if every language were equally relevant. The
    choice is kept in the base, through a new profile or model, until a `vm calibrate` without the flag; a language
    under 30 vacancies uses the shared scale, and its fits move once when it reaches 30.
@@ -71,8 +94,8 @@ then it would mostly echo a handful of decisions.
 
 Similarity answers "does this look like my experience?". It does not answer "would I take it?". A job that needs
 daily calls in a language you do not speak, pays half your floor, or is a scam can look like a perfect match on paper
-and land right next to the jobs you want. Real examples of terms people set: *no live calls in English — I write
-well, speak poorly* (a condition); *never receive client payments on my own card* (a red line).
+and land right next to the jobs you want. Examples of terms people set: *no client calls in French — I read it
+fine, can't hold a conversation* (a condition); *no unpaid test tasks longer than a day* (a red line).
 
 Terms are regular expressions in a YAML file, grouped by how much they matter:
 
@@ -132,9 +155,10 @@ bar) and is read from the cache after that. No API key: Hugging Face prints a wa
 needed. For a lighter start add `--model intfloat/multilingual-e5-small` (~0.5 GB, a little less accurate) to every
 command — `--model` is a global option, and one base should stay on one model.
 On Windows the commands are the same in PowerShell; set variables with `$env:VM_DB = "my.db"` instead of `export`.
+The package installs as `vacancy-match` and the command is `vm`.
 
 ```bash
-git clone https://github.com/Augustforge/vacancy-match && cd vacancy-match
+git clone https://github.com/Augustforge/Forge_JobSieve && cd Forge_JobSieve
 uv sync --extra model
 uv run python examples/make_synthetic.py
 uv run vm --db demo.db index-profile examples/profile
@@ -259,6 +283,27 @@ not yet different. Comparing one scale with per-language scales takes labels in 
 It counts your own decisions by default: an agent's labels would only measure the system agreeing with itself
 (`--labels all` includes them).
 
+### On a real search
+
+My own base, October 2026: 402 vacancies with text from 5 fetch runs (12–16 Oct) plus earlier applications.
+322 labels, but only 14 are my own hand labels (11 fit, 3 no-fit). The other 308 were seeded from my application
+tracker, with "I sent it" counted as fit.
+
+| measure | stage 1 | stage 1+2 |
+|---|---|---|
+| AUC on my 14 hand labels [95% CI] | 0.70 [0.42–0.94] | 0.79 [0.48–1.00] |
+| share of fits in the top 10, all runs | 0.72 | 0.82 |
+| AUC across runs, all labels | 0.43 | 0.48 |
+
+- **Inside a run the order works.** On seeded labels within single runs, AUC is 0.83 (20 labeled vacancies) and 0.69
+  (45 labeled out of 148).
+- **Across runs it is a coin flip.** The likely cause is the seed: "sent" is not "best match", since I also applied
+  to so-so fits, and different sources write very different texts.
+- **14 hand labels prove nothing.** The interval runs from a coin flip to perfect. The number starts to mean
+  something at 50+ hand labels with 15+ rejections.
+- **The rule report earned its place.** Stale postings (older than 14 days) hit 26% of no-fits and 4% of fits. A ×1.1
+  crypto boost I had set lifted more vacancies I rejected (56%) than ones I took (36%): the tool caught my own bad rule.
+
 Synthetic demo — it shows the mechanics, it is not a benchmark. 14 vacancies; two of them share the candidate's
 skills but not their terms (fluent German; $600 a month), so only stage 2 can send them down:
 
@@ -294,3 +339,8 @@ own list of exact private strings kept outside the repo.
 uv run pytest            # fast tests, hashing embedder
 uv run pytest -m model   # one test with the real model
 ```
+
+---
+
+Part of **[Augustus Forge](https://x.com/augustus_forge)**: autonomous systems, built in public. Failures included.
+Wins earned.
