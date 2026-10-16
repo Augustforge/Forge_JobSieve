@@ -54,6 +54,7 @@ def frozen_scales(store: Store, model: str, vecs: dict, chunk_vecs: dict, langs:
     measured = profile_scales(vecs, chunk_vecs, langs, MIN_LANG_GROUP)
     if "" not in stored:
         if measured and (refresh or measured[""][2] >= MIN_FREEZE):
+            store.clear_calibrations(model)  # a language that shrank below MIN_LANG_GROUP goes back to the pooled scale
             for lang, snap in measured.items():
                 store.put_calibration(model, *snap, lang=lang)
         return measured

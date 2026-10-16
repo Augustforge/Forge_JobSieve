@@ -97,15 +97,17 @@ def detect_lang(text: str) -> str:
     if not letters:
         return ""
     counts = {lang: sum(1 for c in letters if lo <= c <= hi) for lang, lo, hi in _SCRIPTS}
-    if counts["ja"]:  # kana is only Japanese; kanji alone would read as Chinese
-        return "ja"
     script, n = max(counts.items(), key=lambda kv: kv[1])
+    if script == "zh" and counts["ja"]:  # kana is only Japanese; kanji alone would read as Chinese
+        script, n = "ja", n + counts["ja"]
     if n / len(letters) > 0.3:
         return script
     words = [w.lower() for w in _WORD.findall(text)]
     votes = {lang: sum(w in stop for w in words) for lang, stop in _STOPWORD_SETS.items()}
     best = max(votes, key=votes.get)
-    return best if votes[best] else "en"
+    if votes[best]:
+        return best
+    return script if n else "en"  # Latin letters but no Latin sentence: stack names around Russian, Chinese, …
 
 
 def now_iso() -> str:

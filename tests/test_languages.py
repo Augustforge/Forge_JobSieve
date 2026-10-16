@@ -87,3 +87,48 @@ def test_cli_ranks_and_calibrates_per_language(tmp_path, monkeypatch, capsys):
     assert main(db + ["calibrate"]) == 0
     out = capsys.readouterr().out
     assert "ru: centre" in out and "en: centre" in out
+
+
+@pytest.mark.parametrize("text, lang", [
+    ("We are looking for a Python developer to join the team at 株式会社メルカリ and build our backend", "en"),
+    ("Ищем Python-разработчика, японский язык (にほんご) будет плюсом, работа удалённая", "ru"),
+    ("Ищем backend-разработчика: Python, FastAPI, PostgreSQL, Docker, Kubernetes, Redis, Kafka, CI/CD", "ru"),
+])
+def test_a_few_foreign_words_do_not_change_the_language(text, lang):
+    assert detect_lang(text) == lang
+
+
+def _vectors(langs):
+    rng = np.random.default_rng(0)
+    vecs = {vid: unit(*rng.normal(size=8)) for vid in langs}
+    return vecs, {"c": unit(*rng.normal(size=8))}
+
+
+def test_calibrate_drops_the_scale_of_a_language_that_shrank(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "MIN_LANG_GROUP", 5)
+    s = Store(tmp_path / "vm.db")
+    s.put_calibration("m", 0.88, 0.02, 100)
+    s.put_calibration("m", 0.80, 0.02, 31, lang="es")
+    langs = {f"ru{i}": "ru" for i in range(6)} | {f"es{i}": "es" for i in range(3)}
+    vecs, chunks = _vectors(langs)
+    cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True)
+    assert set(s.get_calibrations("m")) == {"", "ru"}  # es is down to 3: back on the pooled scale
+
+
+def test_a_language_that_grew_is_frozen_and_the_others_stay_put(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "MIN_LANG_GROUP", 5)
+    s = Store(tmp_path / "vm.db")
+    s.put_calibration("m", 0.88, 0.02, 100)
+    s.put_calibration("m", 0.90, 0.01, 60, lang="ru")
+    langs = {f"ru{i}": "ru" for i in range(6)} | {f"en{i}": "en" for i in range(6)}
+    vecs, chunks = _vectors(langs)
+    scales = cli.frozen_scales(s, "m", vecs, chunks, langs)
+    assert scales[""] == (0.88, 0.02, 100) and scales["ru"] == (0.90, 0.01, 60)
+    assert scales["en"][2] == 6 and s.get_calibrations("m")["en"] == scales["en"]
+
+
+def test_a_model_name_with_a_bar_keeps_its_pooled_scale(tmp_path):
+    s = Store(tmp_path / "vm.db")
+    s.put_calibration("a|b", 0.88, 0.02, 100)
+    s.put_calibration("a|b", 0.9, 0.01, 60, lang="ru")
+    assert s.get_calibrations("a|b") == {"": (0.88, 0.02, 100), "ru": (0.9, 0.01, 60)}

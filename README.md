@@ -37,8 +37,9 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
    scale-width above English ones — so one shared scale would rank a language down for being one. The language is
    guessed without extra libraries: by script (Cyrillic, Chinese, Japanese, Korean, Arabic, …) and by frequent words
    for Latin-script languages (English, Spanish, Portuguese, German, French, …). A language with fewer vacancies uses
-   the pooled scale until it grows. The price: each language's median vacancy gets 50, as if every language were
-   equally relevant on average — true when you collect by your own searches, not when you add a pile of random ones.
+   the pooled scale until it grows; at 30 its fits move once, to its own scale, and stay there. The price: each
+   language's median vacancy gets 50, as if every language were equally relevant on average — true when you collect
+   by your own searches, not when you add a pile of random ones.
 
 ### Stage 2: score, the candidate's terms
 

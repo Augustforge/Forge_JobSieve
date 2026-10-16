@@ -107,7 +107,13 @@ class Store:
         prefix = f"{model}|"  # not LIKE: "_" in a model name would be a wildcard
         rows = self.db.execute("SELECT model, centre, width, n FROM calibration WHERE model = ? OR substr(model, 1, ?) = ?",
                                (model, len(prefix), prefix)).fetchall()
-        return {key.partition("|")[2]: (centre, width, n) for key, centre, width, n in rows}
+        return {key[len(prefix):] if key != model else "": (centre, width, n) for key, centre, width, n in rows}
+
+    def clear_calibrations(self, model: str) -> None:
+        prefix = f"{model}|"
+        with self.db:
+            self.db.execute("DELETE FROM calibration WHERE model = ? OR substr(model, 1, ?) = ?",
+                            (model, len(prefix), prefix))
 
     def put_calibration(self, model: str, centre: float, width: float, n: int, lang: str = "") -> None:
         with self.db:
