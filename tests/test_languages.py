@@ -196,3 +196,12 @@ def test_language_scales_from_an_older_version_are_ignored_by_default(tmp_path):
     assert s.scales("m") == {"": (0.88, 0.02, 100)}
     s.set_per_language(True)
     assert s.scales("m") == {"": (0.88, 0.02, 100), "ru": (0.90, 0.01, 60)}
+
+
+def test_calibrate_with_nothing_to_measure_does_not_bring_old_scales_back(tmp_path):
+    s = Store(tmp_path / "vm.db")
+    s.put_calibration("m", 0.88, 0.02, 100)
+    s.put_calibration("m", 0.90, 0.01, 60, lang="ru")
+    s.set_per_language(True)
+    assert cli.frozen_scales(s, "m", {}, {}, {}, refresh=True) == {}
+    assert s.scales("m") == {}  # an old scale measured on another base would come back silently

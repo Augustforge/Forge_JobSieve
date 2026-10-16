@@ -55,7 +55,8 @@ def frozen_scales(store: Store, model: str, vecs: dict, chunk_vecs: dict, langs:
     stored = {} if refresh else store.scales(model)
     measured = profile_scales(vecs, chunk_vecs, langs, MIN_LANG_GROUP if per_language else None)
     if "" not in stored:
-        if measured and (refresh or measured[""][2] >= MIN_FREEZE):
+        # on refresh even an empty measurement replaces the old set: a scale from another base must not come back
+        if refresh or (measured and measured[""][2] >= MIN_FREEZE):
             store.replace_calibrations(model, measured)  # a language that shrank goes back to the pooled scale
         return measured
     for lang, snap in measured.items():  # per language: one that grew big enough is frozen now, the rest stay put

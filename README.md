@@ -162,7 +162,7 @@ export VM_DB=my.db VM_RULES=my-rules.yaml          # or pass --db / --rules
 uv run vm index-profile path/to/resumes
 uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
 uv run vm add run.jsonl                            # prints the run id fetch stamped: today's date
-uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
+uv run vm calibrate                                # once you have 50+ vacancies (add --per-language if you chose it)
 # uv run vm calibrate --per-language               # optional, only after comparing with vm eval — Scoring, step 4
 uv run vm rank --run 2026-10-14 --out top.md       # the run id from the line above
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
