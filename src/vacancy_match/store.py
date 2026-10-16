@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS embeddings (
   PRIMARY KEY (owner_type, owner_id, model));
 CREATE TABLE IF NOT EXISTS profile_chunks (id TEXT PRIMARY KEY, track TEXT, lang TEXT, section TEXT, text TEXT);
 CREATE TABLE IF NOT EXISTS calibration (model TEXT PRIMARY KEY, centre REAL, width REAL, n INTEGER, created_at TEXT);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS labels (
   vacancy_id TEXT, label TEXT, actor TEXT, track TEXT, reasons TEXT, note TEXT, created_at TEXT);
 """
@@ -109,11 +110,30 @@ class Store:
                                (model, len(prefix), prefix)).fetchall()
         return {key[len(prefix):] if key != model else "": (centre, width, n) for key, centre, width, n in rows}
 
-    def clear_calibrations(self, model: str) -> None:
+    def scales(self, model: str) -> dict[str, tuple[float, float, int]]:
+        """The scales ranking uses: language ones only when per-language scales are on — older versions froze them
+        without being asked."""
+        stored = self.get_calibrations(model)
+        return stored if self.per_language() else {k: v for k, v in stored.items() if not k}
+
+    def per_language(self) -> bool:
+        row = self.db.execute("SELECT value FROM settings WHERE key = 'per_language'").fetchone()
+        return bool(row and row[0] == "1")
+
+    def set_per_language(self, on: bool) -> None:  # a choice of the candidate: survives a new profile or model
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO settings VALUES ('per_language', ?)", ("1" if on else "0",))
+
+    def replace_calibrations(self, model: str, scales: dict[str, tuple[float, float, int]]) -> None:
+        """All of a model's scales in one transaction: an interrupted calibrate leaves the old set, not half a new one."""
         prefix = f"{model}|"
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         with self.db:
             self.db.execute("DELETE FROM calibration WHERE model = ? OR substr(model, 1, ?) = ?",
                             (model, len(prefix), prefix))
+            self.db.executemany("INSERT INTO calibration VALUES (?, ?, ?, ?, ?)",
+                                [(f"{model}|{lang}" if lang else model, c, w, n, now)
+                                 for lang, (c, w, n) in scales.items()])
 
     def put_calibration(self, model: str, centre: float, width: float, n: int, lang: str = "") -> None:
         with self.db:

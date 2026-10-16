@@ -42,7 +42,9 @@ Every vacancy gets two numbers: **fit** — does it look like my experience? —
    Once you have some fit/no_fit labels (`vm label`), measure before you switch: run `vm eval` after each
    `vm calibrate` and keep the one with the higher AUC. On the author's base the shared scale won — AUC 0.59 against 0.34 on a run of 148 vacancies — because English roles there
    were mostly ones the candidate could not take. Per-language scales suit a base where fits are spread evenly across
-   languages; they give each language's median vacancy 50 points, as if every language were equally relevant.
+   languages; they give each language's median vacancy 50 points, as if every language were equally relevant. The
+   choice is kept in the base, through a new profile or model, until a `vm calibrate` without the flag; a language
+   under 30 vacancies uses the shared scale, and its fits move once when it reaches 30.
 
 ### Stage 2: score, the candidate's terms
 
@@ -161,7 +163,7 @@ uv run vm index-profile path/to/resumes
 uv run vm fetch remotive:python remoteok:python greenhouse:gitlab --where remote --out run.jsonl
 uv run vm add run.jsonl                            # prints the run id fetch stamped: today's date
 uv run vm calibrate                                # once you have 50+ vacancies; again after a model or resume change
-uv run vm calibrate --per-language                 # optional: a scale per language — see Scoring, step 4
+# uv run vm calibrate --per-language               # optional, only after comparing with vm eval — Scoring, step 4
 uv run vm rank --run 2026-10-14 --out top.md       # the run id from the line above
 uv run vm label <url> fit --track backend          # every decision, fit and no_fit
 uv run vm label <url> no_fit --reasons onsite,cold-calls   # reasons are your own words, one word each

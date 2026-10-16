@@ -14,7 +14,7 @@ import numpy as np
 
 from .embed import ensure_embeddings
 from .models import Label, Vacancy, run_date
-from .rank import MIN_TEXT, Ranked, Reference, profile_scales, rank
+from .rank import MIN_LANG_GROUP, MIN_TEXT, Ranked, Reference, profile_scales, rank, vacancy_lang
 from .rules import RuleSet
 
 
@@ -163,8 +163,10 @@ def evaluate(store, embedder, *, neighbor_weight: float = 0.0, hybrid_alpha: flo
                              {v.id: v.embed_text() for v in vacs if len(v.text) >= MIN_TEXT}, "query")
     # one label-free set of scales for every run (the frozen ones, else measured on all vectors), so pooled AUC
     # compares like with like; per-run scales would map each run's median to 0.5
-    scale = None if hybrid_alpha > 0 else (store.get_calibrations(embedder.name) or
-                                           profile_scales(vecs, chunk_vecs, {}))
+    min_group = MIN_LANG_GROUP if store.per_language() else None
+    scale = None if hybrid_alpha > 0 else (store.scales(embedder.name) or
+                                           profile_scales(vecs, chunk_vecs, {v.id: vacancy_lang(v) for v in vacs},
+                                                          min_group))
     runs, every, track_pairs = [], [], []
     rule_stats: dict[str, RuleStat] = {}
     for run in sorted({v.run_id for v in vacs}, key=lambda r: (run_date(r), r)):
@@ -172,7 +174,7 @@ def evaluate(store, embedder, *, neighbor_weight: float = 0.0, hybrid_alpha: flo
         day = run_date(run)  # replay each run as it was: "stale" means stale on the day it was collected
         ranked = rank(in_run, vecs, chunks, chunk_vecs, references=references_before(vacs, vecs, labels, run),
                       neighbor_weight=neighbor_weight, k_neighbors=k_neighbors, rules=rules, hybrid_alpha=hybrid_alpha,
-                      today=date.fromisoformat(day) if day else None, scale=scale)
+                      today=date.fromisoformat(day) if day else None, scale=scale, min_lang_group=min_group)
         ids = [r.vacancy.id for r in ranked]
         positives = {v.id for v in in_run if labels[v.id].label == "fit"}
         runs.append(RunMetrics(run, len(in_run), len(positives), len(positives) / len(in_run),
@@ -199,7 +201,8 @@ def evaluate(store, embedder, *, neighbor_weight: float = 0.0, hybrid_alpha: flo
         return weighted_mean((getattr(m, attr), m.n) for m in runs)
 
     pooled = pooled_auc_ci([r.score for r in every], [labels[r.vacancy.id].label == "fit" for r in every])
-    return EvalResult(f"{embedder.name} nw={neighbor_weight} hybrid={hybrid_alpha} stage={'1+2' if rules else '1'}",
+    return EvalResult(f"{embedder.name} nw={neighbor_weight} hybrid={hybrid_alpha} stage={'1+2' if rules else '1'}"
+                      f"{' scales=per-language' if min_group else ''}",
                       runs, mean("np10"), mean("np20"), mean("r20"), mean("auc"), mean("ap"), track_acc, false_pos,
                       false_neg, rule_stats, *pooled)
 

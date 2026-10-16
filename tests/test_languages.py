@@ -1,4 +1,5 @@
-"""Vacancies in different languages: one fit scale per language, so a language is not ranked down for being one."""
+"""Vacancies in different languages: one fit scale for all by default; per-language scales on request, kept in the
+base until switched off."""
 import json
 
 import numpy as np
@@ -144,7 +145,8 @@ def test_calibrate_drops_the_scale_of_a_language_that_shrank(tmp_path, monkeypat
     s.put_calibration("m", 0.80, 0.02, 31, lang="es")
     langs = {f"ru{i}": "ru" for i in range(6)} | {f"es{i}": "es" for i in range(3)}
     vecs, chunks = _vectors(langs)
-    cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True, per_language=True)
+    s.set_per_language(True)
+    cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True)
     assert set(s.get_calibrations("m")) == {"", "ru"}  # es is down to 3: back on the pooled scale
 
 
@@ -153,6 +155,7 @@ def test_a_language_that_grew_is_frozen_and_the_others_stay_put(tmp_path, monkey
     s = Store(tmp_path / "vm.db")
     s.put_calibration("m", 0.88, 0.02, 100)
     s.put_calibration("m", 0.90, 0.01, 60, lang="ru")
+    s.set_per_language(True)
     langs = {f"ru{i}": "ru" for i in range(6)} | {f"en{i}": "en" for i in range(6)}
     vecs, chunks = _vectors(langs)
     scales = cli.frozen_scales(s, "m", vecs, chunks, langs)
@@ -165,3 +168,31 @@ def test_a_model_name_with_a_bar_keeps_its_pooled_scale(tmp_path):
     s.put_calibration("a|b", 0.88, 0.02, 100)
     s.put_calibration("a|b", 0.9, 0.01, 60, lang="ru")
     assert s.get_calibrations("a|b") == {"": (0.88, 0.02, 100), "ru": (0.9, 0.01, 60)}
+
+
+def test_per_language_choice_is_kept_before_any_language_is_big_enough(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "MIN_LANG_GROUP", 5)
+    s = Store(tmp_path / "vm.db")
+    langs = {f"ru{i}": "ru" for i in range(3)} | {f"en{i}": "en" for i in range(3)}
+    vecs, chunks = _vectors(langs)
+    s.set_per_language(True)
+    assert set(cli.frozen_scales(s, "m", vecs, chunks, langs, refresh=True)) == {""}  # nobody has 5 yet
+    langs |= {f"en{i}": "en" for i in range(3, 6)}
+    vecs, chunks = _vectors(langs)
+    assert set(cli.frozen_scales(s, "m", vecs, chunks, langs)) == {"", "en"}  # English grew: its own scale now
+
+
+def test_per_language_choice_survives_a_new_profile(tmp_path):
+    s = Store(tmp_path / "vm.db")
+    s.set_per_language(True)
+    s.replace_profile([ProfileChunk("c", "A", "en", "Projects", "python bots")])
+    assert s.per_language()
+
+
+def test_language_scales_from_an_older_version_are_ignored_by_default(tmp_path):
+    s = Store(tmp_path / "vm.db")  # older versions froze per-language scales without being asked
+    s.put_calibration("m", 0.88, 0.02, 100)
+    s.put_calibration("m", 0.90, 0.01, 60, lang="ru")
+    assert s.scales("m") == {"": (0.88, 0.02, 100)}
+    s.set_per_language(True)
+    assert s.scales("m") == {"": (0.88, 0.02, 100), "ru": (0.90, 0.01, 60)}
