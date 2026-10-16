@@ -87,7 +87,7 @@ _STOPWORDS = {
     "tr": "ve bir i\u00e7in ile bu da de olarak en \u00e7ok olan biz",
 }
 _STOPWORD_SETS = {lang: set(words.split()) for lang, words in _STOPWORDS.items()}
-_POLISH_ONLY = set("ąęłńśźż")
+_POLISH_ONLY = set("ąćęłńśźż")
 _WORD = re.compile(r"[^\W\d_]+")
 
 
@@ -109,7 +109,8 @@ def detect_lang(text: str) -> str:
         return script
     words = [w.lower() for w in _WORD.findall(text) if len(w) > 1]  # not the "e" of e-commerce or the "a" of A/B
     votes = {lang: sum(w in stop for w in words) for lang, stop in _STOPWORD_SETS.items()}
-    votes["pl"] += sum(c in _POLISH_ONLY for c in text.lower())  # its frequent words are mostly one letter: w, z, i
+    # Polish frequent words are mostly one letter (w, z, i): its letters vote instead, outside names like Wrocław
+    votes["pl"] += sum(1 for w in _WORD.findall(text) if w[0].islower() and _POLISH_ONLY & set(w))
     best = max(votes, key=votes.get)
     if votes[best]:
         return best

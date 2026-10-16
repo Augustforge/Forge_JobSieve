@@ -105,6 +105,9 @@ def test_cli_ranks_and_calibrates_per_language(tmp_path, monkeypatch, capsys):
     ("【募集職種】基盤開発技術者【勤務地】東京都港区【給与】年収800万円〜1200万円【必須経験】"
      "Python開発経験3年以上、大規模分散処理基盤の設計開発経験【歓迎経験】金融業界での開発経験", "ja"),
     ("我们的客户包括ソフトバンク株式会社与楽天グループ株式会社，现招聘后端工程师，负责支付系统开发，远程工作", "zh"),
+    ("Ищем разработчика в польскую компанию (Wrocław/Łódź). Стек: Python, FastAPI, PostgreSQL, Docker, "
+     "Kubernetes, Redis, Kafka, Grafana, Prometheus, GitLab CI, Terraform, Ansible, Elasticsearch, RabbitMQ, "
+     "Celery, SQLAlchemy, Pydantic, Alembic, ClickHouse. Удалёнка.", "ru"),
 ])
 def test_a_few_foreign_words_do_not_change_the_language(text, lang):
     assert detect_lang(text) == lang
